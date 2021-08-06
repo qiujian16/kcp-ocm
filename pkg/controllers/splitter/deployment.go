@@ -89,7 +89,7 @@ func NewDeploymentSplitter(
 		WithFilteredEventsInformersQueueKeyFunc(
 			controller.decisionQueueKey,
 			controller.decisionFilter, placementDecisionInformer.Informer()).
-		WithSync(controller.sync).ToController("ManifestWorkAgent", recorder)
+		WithSync(controller.sync).ToController("Deployment-Splitter", recorder)
 }
 
 func (d *DeploymentSplitter) sync(ctx context.Context, syncCtx factory.SyncContext) error {
