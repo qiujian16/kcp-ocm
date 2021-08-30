@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
@@ -195,17 +194,14 @@ func (d *DeploymentSplitter) generateDeploymentSplitter(
 				Labels:      deployment.Labels,
 				Annotations: deployment.Annotations,
 			},
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: appsv1.SchemeGroupVersion.String(),
+				Kind:       "Deployment",
+			},
 			Spec: deployment.Spec,
 		}
 
 		toBeDeployed.Spec.Replicas = &replica
-
-		// Apply the deployment  by manifestwork
-		rawObject, err := runtime.Encode(unstructured.UnstructuredJSONScheme, toBeDeployed)
-		if err != nil {
-			errorArray = append(errorArray, err)
-			continue
-		}
 
 		work := &workapiv1.ManifestWork{
 			ObjectMeta: metav1.ObjectMeta{
@@ -219,7 +215,7 @@ func (d *DeploymentSplitter) generateDeploymentSplitter(
 				Workload: workapiv1.ManifestsTemplate{
 					Manifests: []workapiv1.Manifest{
 						{
-							RawExtension: runtime.RawExtension{Raw: rawObject},
+							RawExtension: runtime.RawExtension{Object: toBeDeployed},
 						},
 					},
 				},
