@@ -1,0 +1,120 @@
+#!/bin/bash
+
+DEMO_DIR="$( dirname "${BASH_SOURCE[0]}" )"
+. ${DEMO_DIR}/demo-magic
+
+ROOT_DIR="$( cd ${DEMO_DIR}/../.. && pwd)"
+KUBECONFIG_DIR=${KUBECONFIG_DIR:-${DEMO_DIR}/kubeconfig}
+
+TYPE_SPEED=30
+#PROMPT_AFTER=1
+DEMO_PROMPT="☸️ $ "
+
+function pause() {
+  if [[ -n "${NO_WAIT}" ]]; then
+    sleep 2
+  else
+    if [[ -n "${1-}" ]]; then
+      sleep "$1"
+    else
+      wait
+    fi
+  fi
+}
+
+
+##on hub 
+echo ">>> on cluster hosting open-cluster-management hub"
+export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
+pe "kubectl get mch -n open-cluster-management"
+echo ">>> open-cluster-management hub is Running"
+pe "kubectl get managedcluster"
+echo ">>> no managedcluster has been imported into the hub"
+echo ">>> importing managedcluster to the hub"
+for file in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do
+pe "echo $file"
+
+#import clusters
+#create managedclusterset
+#create managedclustersetbinding 
+
+##on KCP
+#create deployment in binding "logicalcluster"
+
+##on hub 
+#showing the creation of placement 
+#showing the placement decision 
+
+##on managedclusters 
+#show deployment being created
+
+
+# export KUBECONFIG=${ROOT_DIR}/.kcp/data/admin.kubeconfig
+# if ! kubectl get namespaces &>/dev/null; then
+#   echo "kcp server not started, run 'bin/kcp start'"
+# fi
+
+# kubectl config use-context admin
+
+# clear
+
+# pe "kubectl get pods"
+# pe "kubectl api-resources"
+
+# pe "kubectl apply -Rf ${DEMO_DIR}/external-integrations/"
+# kubectl wait crd/databases.postgresql.crossplane.io --for condition=established &>/dev/null
+# pe "kubectl explain database"
+
+# pause
+# clear
+
+# pe "kubectl config view --minify | grep server:"
+# pe "kubectl config use-context user"
+# pe "kubectl config view --minify | grep server:"
+# pe "kubectl get databases"
+# pe "kubectl get crds"
+
+# pause
+
+# clear
+
+# pe "kubectl config use-context admin"
+
+# pe "kubectl apply -f ${ROOT_DIR}/config/cluster.example.dev_clusters.yaml"
+
+# pe "head -n 15 ${CLUSTERS_DIR}/us-west1.yaml"
+# pe "kubectl apply -f ${CLUSTERS_DIR}/us-west1.yaml"
+# pe "head -n 15 ${CLUSTERS_DIR}/us-east1.yaml"
+# pe "kubectl apply -f ${CLUSTERS_DIR}/us-east1.yaml"
+
+# kubectl wait crd/deployments.apps --for condition=established &>/dev/null
+# kubectl wait apiservices/v1.apps --for condition=available &>/dev/null
+# pause 5
+
+# pe "kubectl api-resources"
+
+# pe "kubectl create namespace demo"
+# pe "cat ${DEMO_DIR}/deployment.yaml"
+
+# pe "kubectl apply -f ${DEMO_DIR}/deployment.yaml -n demo"
+
+# pe "kubectl get deployments -n demo"
+
+# pe "kubectl get deployments -n demo"
+# # Expected result:
+# # NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+# # my-deployment            8/15    8            8           10s
+# # my-deployment--us-east1  1/6     1            1           3s
+# # my-deployment--us-west1  7/9     7            7           3s
+
+# pe "kubectl get deployments -n demo"
+# # Expected result:
+# # NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+# # my-deployment            15/15   15           15          14s
+# # my-deployment--us-east1  6/6     6            6           7s
+# # my-deployment--us-west1  9/9     9            9           7s
+# # EOF
+
+# pe "kubectl get pods"
+
+# wait

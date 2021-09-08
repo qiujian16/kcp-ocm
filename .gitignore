@@ -18,3 +18,10 @@ kcp-ocm
 
 !vendor/**
 !cmd/**
+contrib/demo/kcp-ocm.log
+contrib/demo/kcp.log
+contrib/demo/kcp/
+contrib/demo/kubeconfig/hub.kubeconfig
+contrib/demo/kubeconfig/kcp/admin.kubeconfig
+contrib/demo/kubeconfig/managedclusters/*
+contrib/demo/kubectl-cm
