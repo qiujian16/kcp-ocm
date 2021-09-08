@@ -24,9 +24,10 @@ echo ">>> building kcp..."
 if [ ! -d "${KCP_ROOT}" ]; then
     git clone https://github.com/kcp-dev/kcp.git
 fi
-KCP_GIT_SHA="7471fb98d0bcc28fbc5b837c9ffdbb599530f69c"
+# KCP_GIT_SHA="7471fb98d0bcc28fbc5b837c9ffdbb599530f69c"
+# KCP_GIT_SHA="e0096fefde31a6c4c3e309693205f1568886aa2b"
 pushd $KCP_ROOT
-git checkout $KCP_GIT_SHA
+# git checkout $KCP_GIT_SHA
 make build
 if [ ! -f "bin/kcp" ]; then
     echo "bin/kcp does not exist. Compilation probably filed"
@@ -59,7 +60,7 @@ fi
 
 if [[ "$(kubectl get managedcluster --no-headers 2> /dev/null | wc -l | xargs)" != "0" ]]; then
     echo "Expecting a clean hub for the demo."
-    exit 1
+#    exit 1
 fi
 unset KUBECONFIG
 
@@ -95,6 +96,7 @@ echo "Waiting for KCP server to be up and running..."
 sleep 10
 
 export KUBECONFIG=${KCP_ROOT}/.kcp/data/admin.kubeconfig
+kubectl apply -f "${DEMO_DIR}/resources/apps_deployments.yaml"
 kubectl config view --raw=true --minify=true > $KUBECONFIG_DIR/kcp/admin.kubeconfig
 unset KUBECONFIG
 
