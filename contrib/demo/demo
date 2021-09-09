@@ -17,31 +17,33 @@ RED='\033[0;31m'          # Red
 GREEN='\033[0;32m'        # Green
 YELLOW='\033[0;33m'       # Yellow
 
-function wait() {
-  if [[ -n "${NO_WAIT}" ]]; then
-    sleep 2
-  else
-    if [[ -n "${1-}" ]]; then
-      sleep "$1"
-    else
-      wait
-    fi
-  fi
-}
+# function wait() {
+#   if [[ -n "${NO_WAIT}" ]]; then
+#     sleep 2
+#   else
+#     if [[ -n "${1-}" ]]; then
+#       sleep "$1"
+#     else
+#       wait
+#     fi
+#   fi
+# }
 
 function comment() {
-  echo -e "${YELLOW}" $1
+  echo -e '\033[0;33m>>> '$1' <<<\033[0m'
 }
 
 clear
 
-comment ">>> on open-cluster-management hub <<<"
+comment "On the open-cluster-management hub"
 export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
 
 pe "kubectl get mch -n open-cluster-management"
 pe "kubectl get managedcluster"
 
-comment "importing managedcluster to the hub"
+wait
+comment "Importing managedcluster to the hub..."
+
 i=1
 for file in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do
   pe "./kubectl-cm attach cluster demo-managedcluster-${i} --cluster-kubeconfig=${file}"
@@ -49,38 +51,40 @@ for file in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do
 done
 pe "kubectl get managedclusters"
 
+wait
+comment "Create a new managedclusterset"
+
 pe "kubectl apply -f resources/managedclusterset.yaml"
 
 for managedcluster in $(kubectl get managedcluster -o custom-columns=NAME:.metadata.name --no-headers); do
   pe "kubectl label managedcluster ${managedcluster} cluster.open-cluster-management.io/clusterset=demo-managedclusterset"
 done
 
-comment "create a new managedclusterset"
 pe "kubectl get managedclusterset demo-managedclusterset -o yaml"
 
-comment "adding the managedcluster to the managedclusterset"
-oc get ns demo &> /dev/null && pe "kubectl create namespace demo"
+wait
+comment "Adding the managedcluster to the managedclusterset"
+
+kubectl get namespace demo &> /dev/null || pe "kubectl create namespace demo"
 pe "kubectl apply -f resources/managedclustersetbinding.yaml"
 
 export KUBECONFIG=${KCP_ROOT}/.kcp/data/admin.kubeconfig
-#workaround for a kcp defect 
+#workaround for a kcp issue https://github.com/kcp-dev/kcp/issues/157 
 kubectl get namespace default &> /dev/null || kubectl create namespace default
+#end workaround
 
 kubectl config view --minify=true --raw=true > ${KUBECONFIG_DIR}/kcp/admin.kubeconfig
 kubectl config view --minify=true --raw=true | sed 's/\:6443/\:6443\/clusters\/demo/g' > ${KUBECONFIG_DIR}/kcp/demo.kubeconfig
 
-
 wait
 clear
 
-comment '>>> on KCP logicalcluster name "demo" <<<'
+comment 'On KCP logical cluster name "demo"'
 export KUBECONFIG=${KUBECONFIG_DIR}/kcp/demo.kubeconfig
-pe "kubectl config view"
-
-kubectl get crd deployments.apps &> /dev/null || pe "kubectl apply -f resources/apps_deployments.yaml"
-
+pe "kubectl config view --minify | grep server:"
 pe "kubectl get crd"
-comment 'creating deployment on logical cluster "demo"'
+
+comment 'Creating deployment on logical cluster'
 kubectl get namespace default &> /dev/null || pe "kubectl create namespace default" 
 pe "kubectl apply -f resources/deployment.yaml"
 
@@ -88,83 +92,16 @@ wait
 clear
 
 #on hub 
-comment ">>> On the open-cluster-management hub <<<"
+comment "On the open-cluster-management hub"
 export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
 comment "KCP-OCM controller creates Placement"
 pe "kubectl get placement -n demo"
 comment "OCM placement controller find cluster with matching critieria"
 pe "kubectl get placementdecision -n demo -o yaml"
 
+wait
+clear
+
+#TODO
 ##on managedclusters 
 #show deployment being created
-
-
-# export KUBECONFIG=${ROOT_DIR}/.kcp/data/admin.kubeconfig
-# if ! kubectl get namespaces &>/dev/null; then
-#   echo "kcp server not started, run 'bin/kcp start'"
-# fi
-
-# kubectl config use-context admin
-
-# clear
-
-# pe "kubectl get pods"
-# pe "kubectl api-resources"
-
-# pe "kubectl apply -Rf ${DEMO_DIR}/external-integrations/"
-# kubectl wait crd/databases.postgresql.crossplane.io --for condition=established &>/dev/null
-# pe "kubectl explain database"
-
-# wait
-# clear
-
-# pe "kubectl config view --minify | grep server:"
-# pe "kubectl config use-context user"
-# pe "kubectl config view --minify | grep server:"
-# pe "kubectl get databases"
-# pe "kubectl get crds"
-
-# wait
-
-# clear
-
-# pe "kubectl config use-context admin"
-
-# pe "kubectl apply -f ${ROOT_DIR}/config/cluster.example.dev_clusters.yaml"
-
-# pe "head -n 15 ${CLUSTERS_DIR}/us-west1.yaml"
-# pe "kubectl apply -f ${CLUSTERS_DIR}/us-west1.yaml"
-# pe "head -n 15 ${CLUSTERS_DIR}/us-east1.yaml"
-# pe "kubectl apply -f ${CLUSTERS_DIR}/us-east1.yaml"
-
-# kubectl wait crd/deployments.apps --for condition=established &>/dev/null
-# kubectl wait apiservices/v1.apps --for condition=available &>/dev/null
-# wait 5
-
-# pe "kubectl api-resources"
-
-# pe "kubectl create namespace demo"
-# pe "cat ${DEMO_DIR}/deployment.yaml"
-
-# pe "kubectl apply -f ${DEMO_DIR}/deployment.yaml -n demo"
-
-# pe "kubectl get deployments -n demo"
-
-# pe "kubectl get deployments -n demo"
-# # Expected result:
-# # NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
-# # my-deployment            8/15    8            8           10s
-# # my-deployment--us-east1  1/6     1            1           3s
-# # my-deployment--us-west1  7/9     7            7           3s
-
-# pe "kubectl get deployments -n demo"
-# # Expected result:
-# # NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
-# # my-deployment            15/15   15           15          14s
-# # my-deployment--us-east1  6/6     6            6           7s
-# # my-deployment--us-west1  9/9     9            9           7s
-# # EOF
-
-# pe "kubectl get pods"
-
-# wait

@@ -7,6 +7,12 @@ cleanup() {
   kill $KCP_PID $KCP_OCM_PID
 }
 
+function comment() {
+  echo -e '\033[0;33m>>> '$1' <<<\033[0m'
+}
+
+# KCP_GIT_SHA="7471fb98d0bcc28fbc5b837c9ffdbb599530f69c"
+
 DEMO_ROOT="$( dirname "${BASH_SOURCE[0]}" )"
 . ${DEMO_ROOT}/demo-magic
 ROOT_DIR="$( cd ${DEMO_ROOT}/../.. && pwd)"
@@ -14,20 +20,23 @@ KUBECONFIG_DIR=${CLUSTERS_DIR:-${DEMO_ROOT}/kubeconfig}
 KCP_ROOT="${DEMO_ROOT}/kcp"
 
 #install CM-CLI (because it make the demo pretty)
-echo ">>> getting cm-cli..."
+comment "Getting cm-cli..."
+#TODO: make this multi-arch
 if [ ! -f "kubectl-cm" ]; then
     wget -qO- https://github.com/open-cluster-management/cm-cli/releases/download/v1.0.0-beta.4/cm_darwin_amd64.tar.gz | tar zxvf -
     mv cm kubectl-cm
 fi
 
-echo ">>> building kcp..."
+comment "Building kcp..."
 if [ ! -d "${KCP_ROOT}" ]; then
     git clone https://github.com/kcp-dev/kcp.git
 fi
-# KCP_GIT_SHA="7471fb98d0bcc28fbc5b837c9ffdbb599530f69c"
-# KCP_GIT_SHA="e0096fefde31a6c4c3e309693205f1568886aa2b"
 pushd $KCP_ROOT
-# git checkout $KCP_GIT_SHA
+
+if [ ! -z ${KCP_GIT_SHA} ]; then 
+    git checkout ${KCP_GIT_SHA}
+fi
+
 make build
 if [ ! -f "bin/kcp" ]; then
     echo "bin/kcp does not exist. Compilation probably filed"
@@ -35,7 +44,7 @@ if [ ! -f "bin/kcp" ]; then
 fi
 popd
 
-echo ">>> building kcp-ocm..."
+comment "Building kcp-ocm..."
 pushd $ROOT_DIR > /dev/null
 make build
 if [ ! -f "kcp-ocm" ]; then
@@ -44,7 +53,7 @@ if [ ! -f "kcp-ocm" ]; then
 fi
 popd > /dev/null
 
-echo ">>> validating ocm hub"
+comment "Validating ocm hub..."
 export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
 if [ ! -f "$KUBECONFIG" ]; then
     echo "$KUBECONFIG does not exist. Please generate kubeconfig for hub."
@@ -60,17 +69,17 @@ fi
 
 if [[ "$(kubectl get managedcluster --no-headers 2> /dev/null | wc -l | xargs)" != "0" ]]; then
     echo "Expecting a clean hub for the demo."
-#    exit 1
+   exit 1
 fi
 unset KUBECONFIG
 
-echo ">>> validating managed clusters"
+comment "Validating managed clusters..."
 managedcluster_count=0
 for file in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do
     export KUBECONFIG=$file
     kubectl cluster-info
     if [[ "$?" != 0 ]]; then
-        echo "BAD KUBECONFIG for ManagedCluster $File"
+        echo "BAD KUBECONFIG for ManagedCluster $file"
         exit 1
     fi
     managedcluster_count=$((managedcluster_count+1))
@@ -81,7 +90,10 @@ if [[ "$managedcluster_count" != "2" ]]; then
     exit 1
 fi
 
-echo ">>> Starting KCP server ..."
+comment "Press any key to start KCP server and KCP_OCM controller"
+wait
+
+comment "Starting KCP server ..."
 (cd ${KCP_ROOT} && exec ./bin/kcp start) &> kcp.log &
 KCP_PID=$!
 echo "KCP server started: $KCP_PID" 
@@ -93,16 +105,21 @@ if [[ "$?" != 0 ]]; then
 fi
 
 echo "Waiting for KCP server to be up and running..." 
+#TODO: smarter wait
 sleep 10
 
-export KUBECONFIG=${KCP_ROOT}/.kcp/data/admin.kubeconfig
-kubectl apply -f "${DEMO_DIR}/resources/apps_deployments.yaml"
-kubectl config view --raw=true --minify=true > $KUBECONFIG_DIR/kcp/admin.kubeconfig
-unset KUBECONFIG
 
-echo ">>> Starting KCP-OCM controller..."
+comment "Adding deployment to KCP"
+export KUBECONFIG="${KCP_ROOT}/.kcp/data/admin.kubeconfig"
+kubectl config view --minify=true --raw=true > ${KUBECONFIG_DIR}/kcp/admin.kubeconfig
+kubectl config view --minify=true --raw=true | sed 's/\:6443/\:6443\/clusters\/demo/g' > ${KUBECONFIG_DIR}/kcp/demo.kubeconfig
+kubectl apply -f ${DEMO_ROOT}/resources/apps_deployments.yaml
+export KUBECONFIG=${KUBECONFIG_DIR}/kcp/demo.kubeconfig
+kubectl apply -f ${DEMO_ROOT}/resources/apps_deployments.yaml
+
+comment "Starting KCP-OCM controller..."
 ${ROOT_DIR}/kcp-ocm agent \
-    --kcp-kubeconfig="${KUBECONFIG_DIR}/kcp/admin.kubeconfig" \
+    --kcp-kubeconfig="${KCP_ROOT}/.kcp/data/admin.kubeconfig" \
     --kubeconfig="${KUBECONFIG_DIR}/hub.kubeconfig" \
     --namespace=default &> kcp-ocm.log &
 KCP_OCM_PID=$!
@@ -118,4 +135,5 @@ if [[ "$?" != 0 ]]; then
     exit 1 #TODO figure out how to trap exit and execute cleanup 
 fi
 
+comment "Press any key to stop KCP server and KCP_OCM controller"
 wait 

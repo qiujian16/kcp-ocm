@@ -59,8 +59,8 @@ func NewControllerCommandConfig(componentName string, version version.Info, star
 
 		basicFlags: NewControllerFlags(),
 
-		DisableServing:        false,
-		DisableLeaderElection: false,
+		DisableServing:        true,
+		DisableLeaderElection: true,
 	}
 }
 
