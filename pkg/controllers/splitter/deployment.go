@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	appslister "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 	clusterclient "open-cluster-management.io/api/client/cluster/clientset/versioned"
 	clusterinformerv1alpha1 "open-cluster-management.io/api/client/cluster/informers/externalversions/cluster/v1alpha1"
 	clusterlisterv1alpha1 "open-cluster-management.io/api/client/cluster/listers/cluster/v1alpha1"
@@ -77,7 +78,6 @@ func NewDeploymentSplitter(
 		}, kcpDeploymentInformer.Informer()).
 		WithFilteredEventsInformersQueueKeyFunc(func(obj runtime.Object) string {
 			accessor, _ := meta.Accessor(obj)
-
 			key, _ := splitDeploymentKey(accessor.GetName())
 			return key
 		}, func(obj interface{}) bool {
@@ -93,6 +93,7 @@ func NewDeploymentSplitter(
 
 func (d *DeploymentSplitter) sync(ctx context.Context, syncCtx factory.SyncContext) error {
 	key := syncCtx.QueueKey()
+	klog.Infof("Deployment-Splitter %s sync %s", d.workingNamespace, key)
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 
@@ -101,6 +102,7 @@ func (d *DeploymentSplitter) sync(ctx context.Context, syncCtx factory.SyncConte
 	}
 
 	deployment, err := d.kcpDeploymentLister.Deployments(namespace).Get(name)
+	//TODO: handle deletion
 	if err != nil {
 		return err
 	}

@@ -85,8 +85,9 @@ pe "kubectl config view --minify | grep server:"
 pe "kubectl get crd"
 
 comment 'Creating deployment on logical cluster'
-kubectl get namespace default &> /dev/null || pe "kubectl create namespace default" 
-pe "kubectl apply -f resources/deployment.yaml"
+DEPLOYMENT_NAMESPACE="default"
+kubectl get namespace ${DEPLOYMENT_NAMESPACE} &> /dev/null || pe "kubectl create namespace ${DEPLOYMENT_NAMESPACE}" 
+pe "kubectl apply -f resources/deployment.yaml -n ${DEPLOYMENT_NAMESPACE}"
 
 wait
 clear
