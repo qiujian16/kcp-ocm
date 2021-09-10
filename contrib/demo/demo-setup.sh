@@ -108,14 +108,13 @@ echo "Waiting for KCP server to be up and running..."
 #TODO: smarter wait
 sleep 10
 
-
 comment "Adding deployment to KCP"
 export KUBECONFIG="${KCP_ROOT}/.kcp/data/admin.kubeconfig"
 kubectl config view --minify=true --raw=true > ${KUBECONFIG_DIR}/kcp/admin.kubeconfig
 kubectl config view --minify=true --raw=true | sed 's/\:6443/\:6443\/clusters\/demo/g' > ${KUBECONFIG_DIR}/kcp/demo.kubeconfig
-kubectl apply -f ${DEMO_ROOT}/resources/apps_deployments.yaml
+kubectl apply -f ${DEMO_ROOT}/resources/deployments.apps.yaml
 export KUBECONFIG=${KUBECONFIG_DIR}/kcp/demo.kubeconfig
-kubectl apply -f ${DEMO_ROOT}/resources/apps_deployments.yaml
+kubectl apply -f ${DEMO_ROOT}/resources/deployments.apps.yaml
 
 comment "Starting KCP-OCM controller..."
 ${ROOT_DIR}/kcp-ocm agent \

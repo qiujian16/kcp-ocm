@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -122,6 +123,10 @@ func (d *DeploymentSplitter) sync(ctx context.Context, syncCtx factory.SyncConte
 		}
 
 		_, err = d.clusterClient.ClusterV1alpha1().Placements(d.workingNamespace).Create(ctx, placement, metav1.CreateOptions{})
+
+		//hacked requeue after 邱老师 please.....
+		syncCtx.Queue().AddAfter(key, 5*time.Second)
+
 		return err
 	case err != nil:
 		return err
@@ -137,6 +142,8 @@ func (d *DeploymentSplitter) sync(ctx context.Context, syncCtx factory.SyncConte
 
 	placementDecisions, err := d.decisionLister.PlacementDecisions(d.workingNamespace).List(labelSelector)
 	if err != nil {
+		//hacked requeue after 邱老师 please.....
+		syncCtx.Queue().AddAfter(key, 1*time.Second)
 		return err
 	}
 
@@ -177,6 +184,9 @@ func (d *DeploymentSplitter) generateDeploymentSplitter(
 	deployedClusters := sets.NewString()
 
 	for numberToDeploy > 0 {
+		klog.Infof("numberToDeploy: %s", numberToDeploy)
+		klog.Infof("totalReplica: %s", totalReplica)
+
 		cluster := decisions[numberToDeploy-1].ClusterName
 
 		// Record the  desired cluster to deploy
@@ -328,6 +338,8 @@ func (d *DeploymentSplitter) decisionFilter(object interface{}) bool {
 		return false
 	}
 
+	klog.Infof("[decisionFilter] placement.Name: %s", placement.Name)
+
 	_, valid := splitDeploymentKey(placement.Name)
 	return valid
 }
@@ -361,11 +373,13 @@ func splitDeploymentKey(key string) (string, bool) {
 		return "", false
 	}
 
-	keyArray := strings.SplitAfter(strings.TrimPrefix("deployment-", key), "-")
+	keyArray := strings.SplitN(strings.TrimPrefix(key, "deployment-"), "-", 2)
 
-	if len(keyArray) < 2 {
+	if len(keyArray) != 2 {
 		return "", false
 	}
 
-	return fmt.Sprintf("%s/%s", keyArray[0], strings.Join(keyArray[1:], "")), true
+	deploymentKey := fmt.Sprintf("%s/%s", keyArray[0], keyArray[1])
+
+	return deploymentKey, true
 }
