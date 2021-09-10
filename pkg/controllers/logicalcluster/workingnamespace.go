@@ -110,7 +110,7 @@ func (w *WorkingNamespaceMapper) startMapper(ctx context.Context, namespace stri
 	workInformerFactory := workinformers.NewSharedInformerFactory(w.manifestWorkClient, 5*time.Minute)
 
 	restConfig := rest.CopyConfig(w.kcpBaseConfig)
-	restConfig.APIPath = fmt.Sprintf("%s/clusters/%s", restConfig.APIPath, namespace)
+	restConfig.Host = fmt.Sprintf("%s/clusters/%s", restConfig.Host, namespace)
 
 	kubeClient, err := kubernetes.NewForConfig(restConfig)
 
