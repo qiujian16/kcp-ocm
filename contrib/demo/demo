@@ -103,7 +103,7 @@ pe "kubectl get placementdecision -n demo -l cluster.open-cluster-management.io/
 
 #TODO: fix slow manifestwork generation cause by https://github.com/qiujian16/kcp-ocm/issues/3
 comment "ManifestWork is created to deliver the deployment to the selected managed clusters"
-pe "oc get manifestwork -A -l kcp.open-cluster-management.io/splitter=deployment-default-demo-deployment"
+pe "kubectl get manifestwork -A -l kcp.open-cluster-management.io/splitter=deployment-default-demo-deployment"
 
 comment "Deployment is created on the selected managed clusters"
 for kubeconfig in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do

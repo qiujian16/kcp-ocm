@@ -363,9 +363,9 @@ func splitDeploymentKey(key string) (string, bool) {
 
 	keyArray := strings.SplitAfter(strings.TrimPrefix("deployment-", key), "-")
 
-	if len(keyArray) != 2 {
+	if len(keyArray) < 2 {
 		return "", false
 	}
 
-	return fmt.Sprintf("%s/%s", keyArray[0], keyArray[1]), true
+	return fmt.Sprintf("%s/%s", keyArray[0], strings.Join(keyArray[1:], "")), true
 }

@@ -27,7 +27,7 @@ kubectl delete ns demo
 
 rm -rf *.log
 
-if [ "`kubectl get managedcluster | grep demo | wc -l` | xarg" != "0" ]]; then
+if [ "`kubectl get managedcluster 2> /dev/null | grep demo | wc -l | xargs`" != "0" ]; then
     comment "give time for manifestworks to finish delete"
     #TODO...wait smarter
     sleep 120
@@ -43,6 +43,6 @@ for ns in `kubectl get ns -o custom-columns=NAME:.metadata.name --no-headers | g
     done
 
     for rolebinding in `kubectl get rolebinding -n ${ns} -o custom-columns=NAME:.metadata.name --no-headers`; do
-        kubectl patch rolebinding -n ${ns} $rolebinding --type json -p '[{ "op": "remove", "path": "/metadata/finalizers" }]'
+        kubectl patch rolebinding -n ${ns} ${rolebinding} --type json -p '[{ "op": "remove", "path": "/metadata/finalizers" }]'
     done
 done
