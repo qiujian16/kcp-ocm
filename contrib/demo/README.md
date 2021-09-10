@@ -16,9 +16,17 @@ place the seperate kubeconfig files for the cluster in `contrib/demo/kubeconfig/
 ./demo-setup.sh
 ```
 
+this script will first compile `kcp` and `kcp-ocm` as well as download `cm-cli` for open-cluster-management
+
+the script will than wait for user key press to start both `kcp` and `kcp-ocm`
+`kcp` and `kcp-ocm` will be left running till another user key press is recieved 
+
+leave this script running while running the demo than stop the script by pressing any key
+
 ## Running the demo
 ```
 ./demo -n
 ```
+the demo will wait for key press to proceed after each section 
 
 TODO: add more description about what's shown in the demo

@@ -10,93 +10,103 @@ KCP_ROOT="${DEMO_DIR}/kcp"
 TYPE_SPEED=30
 # PROMPT_AFTER=1
 DEMO_PROMPT="☸️ $ "
+NO_WAIT=1
 
-# function wait() {
+# function () {
 #   if [[ -n "${NO_WAIT}" ]]; then
 #     sleep 2
 #   else
 #     if [[ -n "${1-}" ]]; then
 #       sleep "$1"
 #     else
-#       wait
+#       
 #     fi
 #   fi
 # }
 
 function comment() {
   echo -e '\033[0;33m>>> '$1' <<<\033[0m'
+  wait
 }
 
 clear
 
 comment "On the open-cluster-management hub"
-export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
+pe "export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig"
 
 pe "kubectl get mch -n open-cluster-management"
 pe "kubectl get managedcluster"
 
-wait
-comment "Importing managedcluster to the hub..."
+comment "Import managedcluster to the hub"
 
 i=1
 for file in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do
   pe "./kubectl-cm attach cluster demo-managedcluster-${i} --cluster-kubeconfig=${file}"
   i=$((i+1))
 done
+
+comment "Waiting for imported cluster to become Avaialble"
+while [ $i -lt 30 ]; do
+  echo -ne "."
+  avaialble_clusters=`oc get managedcluster --no-headers -o custom-columns=NAME:.metadata.name,AVAILABLE:'.status.conditions[?(@.type=="ManagedClusterConditionAvailable")].status' 2> /dev/null | grep demo  | grep True | wc -l | xargs`
+  if [ "${avaialble_clusters}" = "2" ]; then
+    echo ""
+    break
+  fi
+  i=$((i+1))
+  sleep 1
+done
+
 pe "kubectl get managedclusters"
 
-wait
+
 comment "Create a new managedclusterset"
 
 pe "kubectl apply -f resources/managedclusterset.yaml"
+
+comment "Add the managedclusters to the managedclusterset"
 
 for managedcluster in $(kubectl get managedcluster -o custom-columns=NAME:.metadata.name --no-headers); do
   pe "kubectl label managedcluster ${managedcluster} cluster.open-cluster-management.io/clusterset=demo-managedclusterset"
 done
 
-pe "kubectl get managedclusterset demo-managedclusterset -o yaml"
+pe "kubectl get managedclusterset demo-managedclusterset -o yaml | tail -n 7"
 
-wait
-comment "Adding the managedcluster to the managedclusterset"
+comment "Bind the managedclusterset to a namespace"
 
 kubectl get namespace demo &> /dev/null || pe "kubectl create namespace demo"
 pe "kubectl apply -f resources/managedclustersetbinding.yaml"
 
-export KUBECONFIG=${KCP_ROOT}/.kcp/data/admin.kubeconfig
 #workaround for a kcp issue https://github.com/kcp-dev/kcp/issues/157 
+export KUBECONFIG=${KUBECONFIG_DIR}/kcp/admin.kubeconfig
 kubectl get namespace default &> /dev/null || kubectl create namespace default
 #end workaround
 
-kubectl config view --minify=true --raw=true > ${KUBECONFIG_DIR}/kcp/admin.kubeconfig
-kubectl config view --minify=true --raw=true | sed 's/\:6443/\:6443\/clusters\/demo/g' > ${KUBECONFIG_DIR}/kcp/demo.kubeconfig
-
-wait
-clear
-
 comment 'On KCP logical cluster name "demo"'
-export KUBECONFIG=${KUBECONFIG_DIR}/kcp/demo.kubeconfig
+
+pe "export KUBECONFIG=${KUBECONFIG_DIR}/kcp/demo.kubeconfig"
 pe "kubectl config view --minify | grep server:"
 pe "kubectl get crd"
 
-comment 'Creating deployment on logical cluster'
-DEPLOYMENT_NAMESPACE="default"
-kubectl get namespace ${DEPLOYMENT_NAMESPACE} &> /dev/null || pe "kubectl create namespace ${DEPLOYMENT_NAMESPACE}" 
-pe "kubectl apply -f resources/deployment.yaml -n ${DEPLOYMENT_NAMESPACE}"
+comment 'Create deployment on logical cluster'
+kubectl get namespace default &> /dev/null || pe "kubectl create namespace default" 
+pe "kubectl apply -f resources/deployment.yaml -n default"
 
-wait
-clear
-
-#on hub 
 comment "On the open-cluster-management hub"
-export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
+
+pe "export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig"
 comment "KCP-OCM controller creates Placement"
+
 pe "kubectl get placement -n demo"
 comment "OCM placement controller find cluster with matching critieria"
-pe "kubectl get placementdecision -n demo -o yaml"
+pe "kubectl get placementdecision -n demo -l cluster.open-cluster-management.io/placement=deployment-default-demo-deployment -o yaml | tail -n 10 | head -n 6"
 
-wait
-clear
+#TODO: fix slow manifestwork generation cause by https://github.com/qiujian16/kcp-ocm/issues/3
+comment "ManifestWork is created to deliver the deployment to the selected managed clusters"
+pe "oc get manifestwork -A -l kcp.open-cluster-management.io/splitter=deployment-default-demo-deployment"
 
-#TODO
-##on managedclusters 
-#show deployment being created
+comment "Deployment is created on the selected managed clusters"
+for kubeconfig in $(ls ${KUBECONFIG_DIR}/managedclusters/*); do
+  pe "export KUBECONFIG=${kubeconfig}"
+  pe "kubectl get deployment -n default"
+done
