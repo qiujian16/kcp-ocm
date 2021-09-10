@@ -11,12 +11,6 @@ TYPE_SPEED=30
 # PROMPT_AFTER=1
 DEMO_PROMPT="☸️ $ "
 
-# colors
-COLOR_OFF='\033[0m'       # Text Reset
-RED='\033[0;31m'          # Red
-GREEN='\033[0;32m'        # Green
-YELLOW='\033[0;33m'       # Yellow
-
 # function wait() {
 #   if [[ -n "${NO_WAIT}" ]]; then
 #     sleep 2
