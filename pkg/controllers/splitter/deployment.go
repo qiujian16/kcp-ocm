@@ -285,9 +285,9 @@ func splitDeploymentKey(key string) (string, bool) {
 		return "", false
 	}
 
-	keyArray := strings.SplitAfter(strings.TrimPrefix("deployment-", key), "-")
+	keyArray := strings.SplitN(strings.TrimPrefix("deployment-", key), "-", 2)
 
-	if len(keyArray) != 2 {
+	if len(keyArray) < 2 {
 		return "", false
 	}
 

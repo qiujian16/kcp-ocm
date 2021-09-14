@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/client-go/tools/cache"
 	clusterlisterv1alpha1 "open-cluster-management.io/api/client/cluster/listers/cluster/v1alpha1"
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned/typed/work/v1"
 	clusterapiv1alpha1 "open-cluster-management.io/api/cluster/v1alpha1"
@@ -80,14 +79,12 @@ func GetPlacementByDecision(placementLister clusterlisterv1alpha1.PlacementListe
 		return nil
 	}
 
-	placementKey, ok := accessor.GetLabels()[placementLabel]
+	placementName, ok := accessor.GetLabels()[placementLabel]
 	if !ok {
 		return nil
 	}
 
-	namespace, name, _ := cache.SplitMetaNamespaceKey(placementKey)
-
-	placement, err := placementLister.Placements(namespace).Get(name)
+	placement, err := placementLister.Placements(accessor.GetNamespace()).Get(placementName)
 
 	if err != nil {
 		return nil

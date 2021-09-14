@@ -119,6 +119,9 @@ func (d *namespacePropagator) sync(ctx context.Context, syncCtx factory.SyncCont
 
 func (d *namespacePropagator) decisionFilter(object interface{}) bool {
 	placement := helpers.GetPlacementByDecision(d.placementLister, object)
+	if placement == nil {
+		return false
+	}
 
 	if placement.Name == defaultPlacement {
 		return true
