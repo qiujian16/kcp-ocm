@@ -7,8 +7,11 @@ import (
 
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/qiujian16/kcp-ocm/pkg/controllers/propagator"
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/splitter"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -20,7 +23,10 @@ import (
 	clusterlisterv1alpha1 "open-cluster-management.io/api/client/cluster/listers/cluster/v1alpha1"
 	workclient "open-cluster-management.io/api/client/work/clientset/versioned"
 	workinformers "open-cluster-management.io/api/client/work/informers/externalversions"
+	clusterapiv1alpha1 "open-cluster-management.io/api/cluster/v1alpha1"
 )
+
+const defaultPlacementName = "default"
 
 type mapperConfiguration struct {
 	workingNamespace string
@@ -74,6 +80,11 @@ func (w *WorkingNamespaceMapper) sync(ctx context.Context, syncCtx factory.SyncC
 
 	// There is no binddings in it,  we remove the syncer
 	if len(bindings) == 0 {
+		err = w.clusterClient.ClusterV1alpha1().Placements(namespace).Delete(ctx, defaultPlacementName, metav1.DeleteOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+
 		if !ok {
 			return nil
 		}
@@ -85,6 +96,26 @@ func (w *WorkingNamespaceMapper) sync(ctx context.Context, syncCtx factory.SyncC
 
 	if ok {
 		return nil
+	}
+
+	// Create a default placement
+	_, err = w.clusterClient.ClusterV1alpha1().Placements(namespace).Get(ctx, defaultPlacementName, metav1.GetOptions{})
+	switch {
+	case errors.IsNotFound(err):
+		defaultPlacement := &clusterapiv1alpha1.Placement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      defaultPlacementName,
+				Namespace: namespace,
+			},
+			Spec: clusterapiv1alpha1.PlacementSpec{},
+		}
+
+		_, err = w.clusterClient.ClusterV1alpha1().Placements(namespace).Create(ctx, defaultPlacement, metav1.CreateOptions{})
+		if err != nil {
+			return err
+		}
+	case err != nil:
+		return err
 	}
 
 	cancel, err := w.startMapper(ctx, namespace)
@@ -120,9 +151,8 @@ func (w *WorkingNamespaceMapper) startMapper(ctx context.Context, namespace stri
 
 	kubeInformer := informers.NewSharedInformerFactory(kubeClient, 5*time.Minute)
 
-	controller := splitter.NewDeploymentSplitter(
+	splitterController := splitter.NewDeploymentSplitter(
 		w.clusterClient,
-		kubeClient,
 		w.manifestWorkClient.WorkV1(),
 		namespace,
 		kubeInformer.Apps().V1().Deployments(),
@@ -131,10 +161,21 @@ func (w *WorkingNamespaceMapper) startMapper(ctx context.Context, namespace stri
 		workInformerFactory.Work().V1().ManifestWorks(),
 		w.recorder)
 
+	nsPropagator := propagator.NewNamespacePropagator(
+		w.manifestWorkClient.WorkV1(),
+		namespace,
+		kubeInformer.Core().V1().Namespaces(),
+		workInformerFactory.Work().V1().ManifestWorks(),
+		clusterInformerFactory.Cluster().V1alpha1().Placements(),
+		clusterInformerFactory.Cluster().V1alpha1().PlacementDecisions(),
+		w.recorder,
+	)
+
 	go workInformerFactory.Start(currentCtx.Done())
 	go clusterInformerFactory.Start(currentCtx.Done())
 	go kubeInformer.Start(currentCtx.Done())
-	go controller.Run(currentCtx, 1)
+	go splitterController.Run(currentCtx, 1)
+	go nsPropagator.Run(currentCtx, 1)
 
 	return stopFunc, nil
 }

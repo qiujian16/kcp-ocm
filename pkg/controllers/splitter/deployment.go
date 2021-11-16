@@ -7,8 +7,8 @@ import (
 
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/qiujian16/kcp-ocm/pkg/helpers"
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +18,6 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	appsinformer "k8s.io/client-go/informers/apps/v1"
-	"k8s.io/client-go/kubernetes"
 	appslister "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -33,14 +32,12 @@ import (
 )
 
 const (
-	splitLabel       = "kcp.open-cluster-management.io/splitter"
-	placementLabel   = "cluster.open-cluster-management.io/placement"
-	defaultPlacement = "default"
+	splitLabel     = "kcp.open-cluster-management.io/splitter"
+	placementLabel = "cluster.open-cluster-management.io/placement"
 )
 
 type DeploymentSplitter struct {
 	clusterClient       clusterclient.Interface
-	kcpKubeClient       kubernetes.Interface
 	manifestWorkClient  workv1client.WorkV1Interface
 	kcpDeploymentLister appslister.DeploymentLister
 	placementLister     clusterlisterv1alpha1.PlacementLister
@@ -51,7 +48,6 @@ type DeploymentSplitter struct {
 
 func NewDeploymentSplitter(
 	clusterClient clusterclient.Interface,
-	kcpKubeClient kubernetes.Interface,
 	manifestWorkClient workv1client.WorkV1Interface,
 	namespace string,
 	kcpDeploymentInformer appsinformer.DeploymentInformer,
@@ -62,7 +58,6 @@ func NewDeploymentSplitter(
 ) factory.Controller {
 	controller := &DeploymentSplitter{
 		clusterClient:       clusterClient,
-		kcpKubeClient:       kcpKubeClient,
 		manifestWorkClient:  manifestWorkClient,
 		workingNamespace:    namespace,
 		kcpDeploymentLister: kcpDeploymentInformer.Lister(),
@@ -127,23 +122,9 @@ func (d *DeploymentSplitter) sync(ctx context.Context, syncCtx factory.SyncConte
 		return err
 	}
 
-	requirement, err := labels.NewRequirement(placementLabel, selection.Equals, []string{placement.Name})
-
+	decisions, err := helpers.GetDecisionsByPlacement(d.decisionLister, placement.Name, d.workingNamespace)
 	if err != nil {
 		return err
-	}
-
-	labelSelector := labels.NewSelector().Add(*requirement)
-
-	placementDecisions, err := d.decisionLister.PlacementDecisions(d.workingNamespace).List(labelSelector)
-	if err != nil {
-		return err
-	}
-
-	decisions := []clusterapiv1alpha1.ClusterDecision{}
-
-	for _, dec := range placementDecisions {
-		decisions = append(decisions, dec.Status.Decisions...)
 	}
 
 	err = d.generateDeploymentSplitter(ctx, deployment, decisions)
@@ -224,7 +205,7 @@ func (d *DeploymentSplitter) generateDeploymentSplitter(
 			},
 		}
 
-		if err := d.applyWork(ctx, work); err != nil {
+		if err := helpers.ApplyWork(ctx, d.manifestWorkClient, work); err != nil {
 			errorArray = append(errorArray, err)
 			continue
 		}
@@ -277,52 +258,8 @@ func (d *DeploymentSplitter) cleanWork(ctx context.Context, workName string, dep
 	return nil
 }
 
-func (d *DeploymentSplitter) applyWork(ctx context.Context, work *workapiv1.ManifestWork) error {
-	existing, err := d.workLister.ManifestWorks(work.Namespace).Get(work.Name)
-
-	switch {
-	case errors.IsNotFound(err):
-		_, err = d.manifestWorkClient.ManifestWorks(work.Namespace).Create(ctx, work, metav1.CreateOptions{})
-		return err
-	case err != nil:
-		return err
-	}
-
-	if manifestsEqual(work.Spec.Workload.Manifests, existing.Spec.Workload.Manifests) {
-		return nil
-	}
-
-	existing.Spec.Workload.Manifests = work.Spec.Workload.Manifests
-	_, err = d.manifestWorkClient.ManifestWorks(work.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
-
-	return err
-}
-
-func (d *DeploymentSplitter) getDecisionByPlacement(object interface{}) *clusterapiv1alpha1.Placement {
-	accessor, _ := meta.Accessor(object)
-
-	if accessor.GetLabels() == nil {
-		return nil
-	}
-
-	placementKey, ok := accessor.GetLabels()[placementLabel]
-	if !ok {
-		return nil
-	}
-
-	namespace, name, _ := cache.SplitMetaNamespaceKey(placementKey)
-
-	placement, err := d.placementLister.Placements(namespace).Get(name)
-
-	if err != nil {
-		return nil
-	}
-
-	return placement
-}
-
 func (d *DeploymentSplitter) decisionFilter(object interface{}) bool {
-	placement := d.getDecisionByPlacement(object)
+	placement := helpers.GetPlacementByDecision(d.placementLister, object)
 
 	if placement == nil {
 		return false
@@ -333,7 +270,7 @@ func (d *DeploymentSplitter) decisionFilter(object interface{}) bool {
 }
 
 func (d *DeploymentSplitter) decisionQueueKey(object runtime.Object) string {
-	placement := d.getDecisionByPlacement(object)
+	placement := helpers.GetPlacementByDecision(d.placementLister, object)
 
 	if placement == nil {
 		return ""
@@ -343,27 +280,14 @@ func (d *DeploymentSplitter) decisionQueueKey(object runtime.Object) string {
 	return key
 }
 
-func manifestsEqual(new, old []workapiv1.Manifest) bool {
-	if len(new) != len(old) {
-		return false
-	}
-
-	for i := range new {
-		if !equality.Semantic.DeepEqual(new[i].Raw, old[i].Raw) {
-			return false
-		}
-	}
-	return true
-}
-
 func splitDeploymentKey(key string) (string, bool) {
 	if !strings.HasPrefix("deployment-", key) {
 		return "", false
 	}
 
-	keyArray := strings.SplitAfter(strings.TrimPrefix("deployment-", key), "-")
+	keyArray := strings.SplitN(strings.TrimPrefix("deployment-", key), "-", 2)
 
-	if len(keyArray) != 2 {
+	if len(keyArray) < 2 {
 		return "", false
 	}
 
