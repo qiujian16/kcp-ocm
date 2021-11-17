@@ -2,7 +2,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: kcp-syncer
-  namespace: {{ .WorkSpace }}
+  namespace: {{ .Namespace }}
   labels:
     app: kcp-syncer
 spec:
@@ -31,10 +31,16 @@ spec:
           privileged: false
           runAsNonRoot: true
         volumeMounts:
-        - name: syncer-kubeconfig-secret
-          mountPath: "/syncer-kubeconfig"
+        - name: syncer-clientcert-secret
+          mountPath: "/syncer-certs"
+          readOnly: true
+        - name: syncer-kubeconfig
+          mountPath: /syncer-kubeconfig
           readOnly: true
       volumes:
-      - name: syncer-kubeconfig-secret
+      - name: syncer-clientcert-secret
         secret:
-          secretName: syncer-kubeconfig-secret
+          secretName: {{ .AddonName }}-kcp-signer-client-cert
+      - name: syncer-kubeconfig
+        configMap:
+          name: syncer-kubeconfig

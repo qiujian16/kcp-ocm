@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kcp-syncer-{{ .WorkSpace }}
+  name: kcp-{{ .AddonName }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -9,4 +9,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kcp-sa
-    namespace: {{ .WorkSpace }}
+    namespace: {{ .Namespace }}

@@ -7,23 +7,31 @@ import (
 
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
+	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonv1alpha1client "open-cluster-management.io/api/client/addon/clientset/versioned"
 	addoninformerv1alpha1 "open-cluster-management.io/api/client/addon/informers/externalversions/addon/v1alpha1"
 	addonlisterv1alpha1 "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
 	clusterinformers "open-cluster-management.io/api/client/cluster/informers/externalversions/cluster/v1"
+	clusterinformerv1beta1 "open-cluster-management.io/api/client/cluster/informers/externalversions/cluster/v1beta1"
 	clusterlister "open-cluster-management.io/api/client/cluster/listers/cluster/v1"
+	clusterlisterv1beta1 "open-cluster-management.io/api/client/cluster/listers/cluster/v1beta1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
 // The controller has the control loop on managedcluster. If a managedcluster is in
 // a managedclusterset with annotation of kcp-lcluster=<name of lcluster>, a managedclusteraddon
-// with the name of "sycner-<lcluster name>-<clusterset name>" will be created in the cluster namespace
+// with the name of "sycner-<lcluster name>" will be created in the cluster namespace
 
 type clusterController struct {
 	addonClient               addonv1alpha1client.Interface
 	managedClusterLister      clusterlister.ManagedClusterLister
 	managedClusterAddonLister addonlisterv1alpha1.ManagedClusterAddOnLister
+	clusterSetLister          clusterlisterv1beta1.ManagedClusterSetLister
 	eventRecorder             events.Recorder
 }
 
@@ -31,11 +39,13 @@ func NewClusterController(
 	addonClient addonv1alpha1client.Interface,
 	clusterInformers clusterinformers.ManagedClusterInformer,
 	addonInformers addoninformerv1alpha1.ManagedClusterAddOnInformer,
+	clusterSetInformer clusterinformerv1beta1.ManagedClusterSetInformer,
 	recorder events.Recorder,
 ) factory.Controller {
 	c := &clusterController{
 		addonClient:               addonClient,
 		managedClusterLister:      clusterInformers.Lister(),
+		clusterSetLister:          clusterSetInformer.Lister(),
 		managedClusterAddonLister: addonInformers.Lister(),
 		eventRecorder:             recorder.WithComponentSuffix("syncer-cluster-controller"),
 	}
@@ -65,7 +75,78 @@ func NewClusterController(
 
 func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
 	// check if related clusterset exists
+	clusterName := syncCtx.QueueKey()
+	klog.Infof("reconcil cluster %s", clusterName)
+
+	cluster, err := c.managedClusterLister.Get(clusterName)
+	switch {
+	case errors.IsNotFound(err):
+		// clean addons if any
+		return nil
+	case err != nil:
+		return err
+	}
+
 	// check if clusterset has workspace annotation
+	clusterSetName := clusterSetFromCluster(cluster)
+	if len(clusterSetName) == 0 {
+		return nil
+	}
+
+	clusterset, err := c.clusterSetLister.Get(clusterSetName)
+	switch {
+	case errors.IsNotFound(err):
+		// clean addons if any
+		return nil
+	case err != nil:
+		return err
+	}
+
+	workspace := workspaceFromObject(clusterset)
+	if len(workspace) == 0 {
+		// clean addons if any
+		return nil
+	}
+
 	// apply managedclusteraddon
+	addon, err := c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).Get(addonName(workspace))
+	switch {
+	case errors.IsNotFound(err):
+		addon = &addonapiv1alpha1.ManagedClusterAddOn{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      addonName(workspace),
+				Namespace: clusterName,
+			},
+			Spec: addonapiv1alpha1.ManagedClusterAddOnSpec{
+				InstallNamespace: fmt.Sprintf("kcp-%s", addonName(workspace)),
+			},
+		}
+		_, err = c.addonClient.AddonV1alpha1().ManagedClusterAddOns(clusterName).Create(ctx, addon, metav1.CreateOptions{})
+		return err
+	case err != nil:
+		return err
+	}
+
 	return nil
+}
+
+func addonName(workspace string) string {
+	return fmt.Sprintf("sycner-%s", workspace)
+}
+
+func clusterSetFromCluster(cluster *clusterv1.ManagedCluster) string {
+	if len(cluster.Labels) == 0 {
+		return ""
+	}
+
+	return cluster.Labels["cluster.open-cluster-management/clusterset"]
+}
+
+func workspaceFromObject(obj interface{}) string {
+	accessor, _ := meta.Accessor(obj)
+	if len(accessor.GetAnnotations()) == 0 {
+		return ""
+	}
+
+	return accessor.GetAnnotations()["kcp-lcluster"]
 }

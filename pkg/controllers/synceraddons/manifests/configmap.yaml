@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: syncer-kubeconfig
+  namespace: {{ .Namespace }}
+data:
+  kubeconfig: {{ .KubeConfig }}

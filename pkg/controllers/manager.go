@@ -10,7 +10,8 @@ import (
 
 // OCMManagerOptions defines the flags for ocm manager
 type OCMManagerOptions struct {
-	KCPRootCAFile string
+	KCPRootCAFile     string
+	KCPKubeConfigFile string
 }
 
 // NewWorkloadAgentOptions returns the flags with default value set
@@ -23,6 +24,7 @@ func (o *OCMManagerOptions) AddFlags(cmd *cobra.Command) {
 	flags := cmd.Flags()
 	// This command only supports reading from config
 	flags.StringVar(&o.KCPRootCAFile, "kcp-ca", o.KCPRootCAFile, "Location of kcp ca file to connect to kcp.")
+	flags.StringVar(&o.KCPKubeConfigFile, "kcp-kubeconfig", o.KCPKubeConfigFile, "Location of kcp kubeconfig file to connect to kcp.")
 }
 
 // RunWorkloadAgent starts the controllers on agent to process work from hub.
