@@ -2,10 +2,18 @@ package synceraddons
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"embed"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/cloudflare/cfssl/config"
+	"github.com/cloudflare/cfssl/signer"
+	"github.com/cloudflare/cfssl/signer/local"
 
 	"github.com/openshift/library-go/pkg/assets"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -29,7 +37,8 @@ import (
 type syncerAddon struct {
 	addonName string
 
-	syncerCAFile  string
+	syncerCA      []byte
+	syncerKey     []byte
 	kcpRestConfig *rest.Config
 	recorder      events.Recorder
 }
@@ -61,11 +70,12 @@ func init() {
 	scheme.AddToScheme(genericScheme)
 }
 
-func NewSyncerAddon(addonName, caFile string, kcpRestConfig *rest.Config) agent.AgentAddon {
+func NewSyncerAddon(addonName string, ca, key []byte, kcpRestConfig *rest.Config) agent.AgentAddon {
 	// needs to handle error later
 	return &syncerAddon{
 		addonName:     addonName,
-		syncerCAFile:  caFile,
+		syncerCA:      ca,
+		syncerKey:     key,
 		kcpRestConfig: kcpRestConfig,
 	}
 }
@@ -108,8 +118,23 @@ func (s *syncerAddon) signerConfiguration(cluster *clusterv1.ManagedCluster) []a
 }
 
 func (s *syncerAddon) signer(csr *certificatesv1.CertificateSigningRequest) []byte {
-	// TODO add signer
-	return nil
+	blockTlsCrt, _ := pem.Decode(s.syncerCA) // note: the second return value is not error for pem.Decode; it's ok to omit it.
+	certs, err := x509.ParseCertificates(blockTlsCrt.Bytes)
+	if err != nil {
+		return nil
+	}
+
+	blockTlsKey, _ := pem.Decode(s.syncerKey)
+	key, err := x509.ParsePKCS1PrivateKey(blockTlsKey.Bytes)
+	if err != nil {
+		return nil
+	}
+
+	data, err := signCSR(csr, certs[0], key)
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
@@ -229,4 +254,39 @@ func buildKubeconfig(clientConfig *rest.Config, workspace string) clientcmdapi.C
 	}
 
 	return kubeconfig
+}
+
+func signCSR(csr *certificatesv1.CertificateSigningRequest, caCert *x509.Certificate, caKey *rsa.PrivateKey) ([]byte, error) {
+	var usages []string
+	for _, usage := range csr.Spec.Usages {
+		usages = append(usages, string(usage))
+	}
+
+	certExpiryDuration := 365 * 24 * time.Hour
+	durationUntilExpiry := time.Until(caCert.NotAfter)
+	if durationUntilExpiry <= 0 {
+		return nil, fmt.Errorf("signer has expired, expired time: %v", caCert.NotAfter)
+	}
+	if durationUntilExpiry < certExpiryDuration {
+		certExpiryDuration = durationUntilExpiry
+	}
+	policy := &config.Signing{
+		Default: &config.SigningProfile{
+			Usage:        usages,
+			Expiry:       certExpiryDuration,
+			ExpiryString: certExpiryDuration.String(),
+		},
+	}
+
+	cfs, err := local.NewSigner(caKey, caCert, signer.DefaultSigAlgo(caKey), policy)
+	if err != nil {
+		return nil, err
+	}
+	signedCert, err := cfs.Sign(signer.SignRequest{
+		Request: string(csr.Spec.Request),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return signedCert, nil
 }

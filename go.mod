@@ -3,6 +3,7 @@ module github.com/qiujian16/kcp-ocm
 go 1.16
 
 require (
+	github.com/cloudflare/cfssl v1.6.0
 	github.com/openshift/build-machinery-go v0.0.0-20210806203541-4ea9b6da3a37
 	github.com/openshift/library-go v0.0.0-20210916194400-ae21aab32431
 	github.com/spf13/cobra v1.2.1

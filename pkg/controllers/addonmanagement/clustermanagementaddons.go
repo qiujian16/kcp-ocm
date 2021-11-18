@@ -35,7 +35,8 @@ type clusterManagementAddonController struct {
 	clusterManagementAddonLister addonlisterv1alpha1.ClusterManagementAddOnLister
 	clusterSetLister             clusterlisterv1beta1.ManagedClusterSetLister
 	sycnerAddonMap               map[string]context.CancelFunc
-	caFile                       string
+	ca                           []byte
+	key                          []byte
 	kcpRestConfig                *rest.Config
 	eventRecorder                events.Recorder
 	managerKubconfig             *rest.Config
@@ -47,7 +48,7 @@ func NewClusterManagementAddonController(
 	clusterSetInformer clusterinformerv1beta1.ManagedClusterSetInformer,
 	managerKubconfig *rest.Config,
 	kcpRestConfig *rest.Config,
-	caFile string,
+	ca, key []byte,
 	recorder events.Recorder,
 ) factory.Controller {
 	c := &clusterManagementAddonController{
@@ -56,7 +57,8 @@ func NewClusterManagementAddonController(
 		clusterSetLister:             clusterSetInformer.Lister(),
 		sycnerAddonMap:               map[string]context.CancelFunc{},
 		managerKubconfig:             managerKubconfig,
-		caFile:                       caFile,
+		ca:                           ca,
+		key:                          key,
 		kcpRestConfig:                kcpRestConfig,
 		eventRecorder:                recorder.WithComponentSuffix("syncer-addon-controller"),
 	}
@@ -121,7 +123,7 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 	}
 
 	mgr, err := addonmanager.New(c.managerKubconfig)
-	agent := synceraddons.NewSyncerAddon(cmaddonName, c.caFile, c.kcpRestConfig)
+	agent := synceraddons.NewSyncerAddon(cmaddonName, c.ca, c.key, c.kcpRestConfig)
 	mgr.AddAgent(agent)
 	addonCtx, cancel := context.WithCancel(ctx)
 	mgr.Start(addonCtx)
