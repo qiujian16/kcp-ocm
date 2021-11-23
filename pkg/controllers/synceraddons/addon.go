@@ -31,6 +31,8 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
+const addonPrefix = "syncer-"
+
 // An addon-framework implementation to deploy syncer and register the syncer to a lcluster on kcp
 // It also needs to setup the rbac on lcluster for the syncer.
 
@@ -94,14 +96,13 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 
 func (s *syncerAddon) GetAgentAddonOptions() agent.AgentAddonOptions {
 	return agent.AgentAddonOptions{
-		AddonName: "helloworld",
+		AddonName: s.addonName,
 		Registration: &agent.RegistrationOption{
 			CSRConfigurations: s.signerConfiguration,
 			CSRApproveCheck:   agent.ApprovalAllCSRs,
 			CSRSign:           s.signer,
 			PermissionConfig:  s.setupAgentPermissions,
 		},
-		InstallStrategy: agent.InstallAllStrategy("default"),
 	}
 }
 
@@ -154,7 +155,7 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 	}
 
 	// create the kubeconfig to connect to kcp lcluster
-	workspace := strings.TrimPrefix(addon.Name, "sycner-")
+	workspace := strings.TrimPrefix(addon.Name, addonPrefix)
 	kubeconfig := buildKubeconfig(s.kcpRestConfig, workspace)
 	kubeConfigData, err := clientcmd.Write(kubeconfig)
 	if err != nil {
@@ -190,7 +191,7 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 func (s *syncerAddon) applyManifestFromFile(file, clusterName, addonName string, recorder events.Recorder) error {
 	// Update config host to lcluster and generate kubeclient
 	kconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspace := strings.TrimPrefix(addonName, "sycner-")
+	workspace := strings.TrimPrefix(addonName, addonPrefix)
 	kconfig.Host = fmt.Sprintf("%s/%s", kconfig.Host, workspace)
 
 	kubeclient, err := kubernetes.NewForConfig(kconfig)

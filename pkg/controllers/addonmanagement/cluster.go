@@ -131,7 +131,7 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 }
 
 func addonName(workspace string) string {
-	return fmt.Sprintf("sycner-%s", workspace)
+	return fmt.Sprintf("syncer-%s", workspace)
 }
 
 func clusterSetFromCluster(cluster *clusterv1.ManagedCluster) string {
@@ -139,7 +139,7 @@ func clusterSetFromCluster(cluster *clusterv1.ManagedCluster) string {
 		return ""
 	}
 
-	return cluster.Labels["cluster.open-cluster-management/clusterset"]
+	return cluster.Labels["cluster.open-cluster-management.io/clusterset"]
 }
 
 func workspaceFromObject(obj interface{}) string {
