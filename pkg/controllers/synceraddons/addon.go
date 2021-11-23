@@ -139,11 +139,13 @@ func (s *syncerAddon) signer(csr *certificatesv1.CertificateSigningRequest) []by
 }
 
 func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
+	/* there is no permission that can be set on kcp yet.
 	for _, file := range permisionFiles {
 		if err := s.applyManifestFromFile(file, cluster.Name, addon.Name, s.recorder); err != nil {
 			return err
 		}
 	}
+	*/
 
 	return nil
 }
@@ -192,7 +194,7 @@ func (s *syncerAddon) applyManifestFromFile(file, clusterName, addonName string,
 	// Update config host to lcluster and generate kubeclient
 	kconfig := rest.CopyConfig(s.kcpRestConfig)
 	workspace := strings.TrimPrefix(addonName, addonPrefix)
-	kconfig.Host = fmt.Sprintf("%s/%s", kconfig.Host, workspace)
+	kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
 
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
@@ -237,7 +239,7 @@ func buildKubeconfig(clientConfig *rest.Config, workspace string) clientcmdapi.C
 	kubeconfig := clientcmdapi.Config{
 		// Define a cluster stanza based on the bootstrap kubeconfig.
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
-			Server:                fmt.Sprintf("%s/%s", clientConfig.Host, workspace),
+			Server:                fmt.Sprintf("%s/clusters/%s", clientConfig.Host, workspace),
 			InsecureSkipTLSVerify: true,
 		}},
 		// Define auth based on the obtained client cert.
