@@ -109,7 +109,7 @@ func (s *syncerAddon) GetAgentAddonOptions() agent.AgentAddonOptions {
 func (s *syncerAddon) signerConfiguration(cluster *clusterv1.ManagedCluster) []addonapiv1alpha1.RegistrationConfig {
 	return []addonapiv1alpha1.RegistrationConfig{
 		{
-			SignerName: "kcp-signer",
+			SignerName: "kcp.dev/syncer-signer",
 			Subject: addonapiv1alpha1.Subject{
 				User:   agent.DefaultUser(cluster.Name, s.addonName, "agent"),
 				Groups: agent.DefaultGroups(cluster.Name, s.addonName),
