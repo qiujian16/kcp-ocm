@@ -82,12 +82,6 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 		return err
 	}
 
-	// check if clusterset has workspace annotation
-	clusterSetName := clusterSetFromCluster(cluster)
-	if len(clusterSetName) == 0 {
-		return nil
-	}
-
 	workspace := workspaceFromObject(cluster)
 	if len(workspace) == 0 {
 		// clean addons if any
