@@ -139,13 +139,11 @@ func (s *syncerAddon) signer(csr *certificatesv1.CertificateSigningRequest) []by
 }
 
 func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
-	/* there is no permission that can be set on kcp yet.
 	for _, file := range permisionFiles {
 		if err := s.applyManifestFromFile(file, cluster.Name, addon.Name, s.recorder); err != nil {
 			return err
 		}
 	}
-	*/
 
 	return nil
 }

@@ -17,9 +17,7 @@ import (
 	addoninformerv1alpha1 "open-cluster-management.io/api/client/addon/informers/externalversions/addon/v1alpha1"
 	addonlisterv1alpha1 "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
 	clusterinformers "open-cluster-management.io/api/client/cluster/informers/externalversions/cluster/v1"
-	clusterinformerv1beta1 "open-cluster-management.io/api/client/cluster/informers/externalversions/cluster/v1beta1"
 	clusterlister "open-cluster-management.io/api/client/cluster/listers/cluster/v1"
-	clusterlisterv1beta1 "open-cluster-management.io/api/client/cluster/listers/cluster/v1beta1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
@@ -31,7 +29,6 @@ type clusterController struct {
 	addonClient               addonv1alpha1client.Interface
 	managedClusterLister      clusterlister.ManagedClusterLister
 	managedClusterAddonLister addonlisterv1alpha1.ManagedClusterAddOnLister
-	clusterSetLister          clusterlisterv1beta1.ManagedClusterSetLister
 	eventRecorder             events.Recorder
 }
 
@@ -39,13 +36,11 @@ func NewClusterController(
 	addonClient addonv1alpha1client.Interface,
 	clusterInformers clusterinformers.ManagedClusterInformer,
 	addonInformers addoninformerv1alpha1.ManagedClusterAddOnInformer,
-	clusterSetInformer clusterinformerv1beta1.ManagedClusterSetInformer,
 	recorder events.Recorder,
 ) factory.Controller {
 	c := &clusterController{
 		addonClient:               addonClient,
 		managedClusterLister:      clusterInformers.Lister(),
-		clusterSetLister:          clusterSetInformer.Lister(),
 		managedClusterAddonLister: addonInformers.Lister(),
 		eventRecorder:             recorder.WithComponentSuffix("syncer-cluster-controller"),
 	}
@@ -93,16 +88,7 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 		return nil
 	}
 
-	clusterset, err := c.clusterSetLister.Get(clusterSetName)
-	switch {
-	case errors.IsNotFound(err):
-		// clean addons if any
-		return nil
-	case err != nil:
-		return err
-	}
-
-	workspace := workspaceFromObject(clusterset)
+	workspace := workspaceFromObject(cluster)
 	if len(workspace) == 0 {
 		// clean addons if any
 		return nil

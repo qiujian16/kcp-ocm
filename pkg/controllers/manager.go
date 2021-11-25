@@ -70,7 +70,6 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		addonClient,
 		clusterInformers.Cluster().V1().ManagedClusters(),
 		addonInformers.Addon().V1alpha1().ManagedClusterAddOns(),
-		clusterInformers.Cluster().V1beta1().ManagedClusterSets(),
 		controllerContext.EventRecorder,
 	)
 	clusterManagementAddonController := addonmanagement.NewClusterManagementAddonController(
