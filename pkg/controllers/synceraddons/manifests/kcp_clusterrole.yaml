@@ -9,3 +9,17 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments/status"]
     verbs: ["update", "patch"]
+  - nonResourceURLs:
+    - /api
+    - /api/*
+    - /apis
+    - /apis/*
+    - /healthz
+    - /livez
+    - /openapi
+    - /openapi/*
+    - /readyz
+    - /version
+    - /version/
+    verbs:
+    - get
