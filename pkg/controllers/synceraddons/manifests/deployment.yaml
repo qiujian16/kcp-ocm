@@ -42,5 +42,5 @@ spec:
         secret:
           secretName: {{ .AddonName }}-kcp.dev-syncer-signer-client-cert
       - name: syncer-kubeconfig
-        configMap:
-          name: syncer-kubeconfig
+        secret:
+          secretName: syncer-kubeconfig

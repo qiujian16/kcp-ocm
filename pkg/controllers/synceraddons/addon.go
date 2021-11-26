@@ -61,13 +61,13 @@ var permisionFiles = []string{
 
 var deployFiles = []string{
 	"manifests/clusterrolebinding.yaml",
-	"manifests/configmap.yaml",
+	"manifests/secret.yaml",
 	"manifests/namespace.yaml",
 	"manifests/deployment.yaml",
 	"manifests/service_account.yaml",
 }
 
-const defaultSyncerImage = "quay.io/qiujian16/syncer:latest"
+const defaultSyncerImage = "quay.io/qiujian/syncer:latest"
 
 func init() {
 	scheme.AddToScheme(genericScheme)
