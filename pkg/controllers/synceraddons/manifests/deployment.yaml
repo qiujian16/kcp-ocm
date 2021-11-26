@@ -40,7 +40,7 @@ spec:
       volumes:
       - name: syncer-clientcert-secret
         secret:
-          secretName: {{ .AddonName }}-kcp-signer-client-cert
+          secretName: {{ .AddonName }}-kcp.dev-syncer-signer-client-cert
       - name: syncer-kubeconfig
         configMap:
           name: syncer-kubeconfig

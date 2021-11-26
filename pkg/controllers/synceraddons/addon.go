@@ -61,6 +61,7 @@ var permisionFiles = []string{
 
 var deployFiles = []string{
 	"manifests/clusterrolebinding.yaml",
+	"manifests/configmap.yaml",
 	"manifests/namespace.yaml",
 	"manifests/deployment.yaml",
 	"manifests/service_account.yaml",
