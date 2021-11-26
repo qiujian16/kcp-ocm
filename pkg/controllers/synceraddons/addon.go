@@ -20,6 +20,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	certificatesv1 "k8s.io/api/certificates/v1"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
@@ -58,6 +59,10 @@ var manifestFiles embed.FS
 var permisionFiles = []string{
 	"manifests/kcp_clusterrolebinding.yaml",
 	"manifests/kcp_clusterrole.yaml",
+	// This is the crd of the deployment, it is just to ensure that when syncer is deployed
+	// the crd is already in the logical cluster.
+	// TODO we should consider creating this when workspace is created instead of here.
+	"manifests/apps_deployments.yaml",
 }
 
 var deployFiles = []string{
@@ -141,13 +146,7 @@ func (s *syncerAddon) signer(csr *certificatesv1.CertificateSigningRequest) []by
 }
 
 func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
-	for _, file := range permisionFiles {
-		if err := s.applyManifestFromFile(file, cluster.Name, addon.Name, s.recorder); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return s.applyManifestFromFile(cluster.Name, addon.Name, s.recorder)
 }
 
 func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) (runtime.Object, error) {
@@ -190,13 +189,18 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 	return object, nil
 }
 
-func (s *syncerAddon) applyManifestFromFile(file, clusterName, addonName string, recorder events.Recorder) error {
+func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recorder events.Recorder) error {
 	// Update config host to lcluster and generate kubeclient
 	kconfig := rest.CopyConfig(s.kcpRestConfig)
 	workspace := strings.TrimPrefix(addonName, addonPrefix)
 	kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
 
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
+	if err != nil {
+		return err
+	}
+
+	apiExtensionClient, err := apiextensionsclient.NewForConfig(kconfig)
 	if err != nil {
 		return err
 	}
@@ -212,7 +216,7 @@ func (s *syncerAddon) applyManifestFromFile(file, clusterName, addonName string,
 	}
 
 	results := resourceapply.ApplyDirectly(context.Background(),
-		resourceapply.NewKubeClientHolder(kubeclient),
+		resourceapply.NewKubeClientHolder(kubeclient).WithAPIExtensionsClient(apiExtensionClient),
 		recorder,
 		func(name string) ([]byte, error) {
 			file, err := manifestFiles.ReadFile(name)
