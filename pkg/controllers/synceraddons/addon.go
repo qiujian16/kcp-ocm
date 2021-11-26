@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"embed"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -174,7 +175,7 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 		Cluster:    cluster.Name,
 		Image:      image,
 		Namespace:  addon.Spec.InstallNamespace,
-		KubeConfig: string(kubeConfigData),
+		KubeConfig: base64.RawStdEncoding.EncodeToString(kubeConfigData),
 	}
 
 	template, err := manifestFiles.ReadFile(file)
