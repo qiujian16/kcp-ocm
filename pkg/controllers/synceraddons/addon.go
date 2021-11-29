@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"embed"
-	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -20,7 +19,9 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	certificatesv1 "k8s.io/api/certificates/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
@@ -67,7 +68,6 @@ var permisionFiles = []string{
 
 var deployFiles = []string{
 	"manifests/clusterrolebinding.yaml",
-	"manifests/secret.yaml",
 	"manifests/namespace.yaml",
 	"manifests/deployment.yaml",
 	"manifests/service_account.yaml",
@@ -98,6 +98,28 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 		}
 		objects = append(objects, object)
 	}
+
+	// create the kubeconfig to connect to kcp lcluster
+	workspace := strings.TrimPrefix(addon.Name, addonPrefix)
+	kubeconfig := buildKubeconfig(s.kcpRestConfig, workspace)
+	kubeConfigData, err := clientcmd.Write(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	objects = append(objects, &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "syncer-kubeconfig",
+			Namespace: addon.Spec.InstallNamespace,
+		},
+		Data: map[string][]byte{
+			"kubeconfig": kubeConfigData,
+		},
+	})
 	return objects, nil
 }
 
@@ -155,26 +177,16 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 		image = defaultSyncerImage
 	}
 
-	// create the kubeconfig to connect to kcp lcluster
-	workspace := strings.TrimPrefix(addon.Name, addonPrefix)
-	kubeconfig := buildKubeconfig(s.kcpRestConfig, workspace)
-	kubeConfigData, err := clientcmd.Write(kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-
 	manifestConfig := struct {
-		AddonName  string
-		Cluster    string
-		Image      string
-		Namespace  string
-		KubeConfig string
+		AddonName string
+		Cluster   string
+		Image     string
+		Namespace string
 	}{
-		AddonName:  s.addonName,
-		Cluster:    cluster.Name,
-		Image:      image,
-		Namespace:  addon.Spec.InstallNamespace,
-		KubeConfig: base64.RawStdEncoding.EncodeToString(kubeConfigData),
+		AddonName: s.addonName,
+		Cluster:   cluster.Name,
+		Image:     image,
+		Namespace: addon.Spec.InstallNamespace,
 	}
 
 	template, err := manifestFiles.ReadFile(file)
@@ -192,8 +204,8 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recorder events.Recorder) error {
 	// Update config host to lcluster and generate kubeclient
 	kconfig := rest.CopyConfig(s.kcpRestConfig)
-	//workspace := strings.TrimPrefix(addonName, addonPrefix)
-	//kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
+	workspace := strings.TrimPrefix(addonName, addonPrefix)
+	kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
 
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
@@ -243,8 +255,7 @@ func buildKubeconfig(clientConfig *rest.Config, workspace string) clientcmdapi.C
 	kubeconfig := clientcmdapi.Config{
 		// Define a cluster stanza based on the bootstrap kubeconfig.
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
-			//Server:                fmt.Sprintf("%s/clusters/%s", clientConfig.Host, workspace),
-			Server:                clientConfig.Host,
+			Server:                fmt.Sprintf("%s/clusters/%s", clientConfig.Host, workspace),
 			InsecureSkipTLSVerify: true,
 		}},
 		// Define auth based on the obtained client cert.
