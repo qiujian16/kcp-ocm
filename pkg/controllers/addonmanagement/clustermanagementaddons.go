@@ -123,7 +123,7 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 	}
 
 	mgr, err := addonmanager.New(c.managerKubconfig)
-	agent := synceraddons.NewSyncerAddon(cmaddonName, c.ca, c.key, c.kcpRestConfig)
+	agent := synceraddons.NewSyncerAddon(cmaddonName, c.ca, c.key, c.kcpRestConfig, c.eventRecorder)
 	mgr.AddAgent(agent)
 	addonCtx, cancel := context.WithCancel(ctx)
 	mgr.Start(addonCtx)

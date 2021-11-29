@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -79,13 +80,14 @@ func init() {
 	scheme.AddToScheme(genericScheme)
 }
 
-func NewSyncerAddon(addonName string, ca, key []byte, kcpRestConfig *rest.Config) agent.AgentAddon {
+func NewSyncerAddon(addonName string, ca, key []byte, kcpRestConfig *rest.Config, recorder events.Recorder) agent.AgentAddon {
 	// needs to handle error later
 	return &syncerAddon{
 		addonName:     addonName,
 		syncerCA:      ca,
 		syncerKey:     key,
 		kcpRestConfig: kcpRestConfig,
+		recorder:      recorder,
 	}
 }
 
@@ -240,13 +242,14 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 		permisionFiles...,
 	)
 
+	var errs []error
 	for _, result := range results {
 		if result.Error != nil {
-			return result.Error
+			errs = append(errs, result.Error)
 		}
 	}
 
-	return nil
+	return errors.NewAggregate(errs)
 }
 
 // buildKubeconfig builds a kubeconfig based on a rest config template with a cert/key pair
