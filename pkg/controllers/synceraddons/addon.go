@@ -192,8 +192,8 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recorder events.Recorder) error {
 	// Update config host to lcluster and generate kubeclient
 	kconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspace := strings.TrimPrefix(addonName, addonPrefix)
-	kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
+	//workspace := strings.TrimPrefix(addonName, addonPrefix)
+	//kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
 
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
@@ -243,7 +243,8 @@ func buildKubeconfig(clientConfig *rest.Config, workspace string) clientcmdapi.C
 	kubeconfig := clientcmdapi.Config{
 		// Define a cluster stanza based on the bootstrap kubeconfig.
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
-			Server:                fmt.Sprintf("%s/clusters/%s", clientConfig.Host, workspace),
+			//Server:                fmt.Sprintf("%s/clusters/%s", clientConfig.Host, workspace),
+			Server:                clientConfig.Host,
 			InsecureSkipTLSVerify: true,
 		}},
 		// Define auth based on the obtained client cert.

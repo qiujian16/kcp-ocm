@@ -3,23 +3,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: syncer
 rules:
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps"]
-    resources: ["deployments/status"]
-    verbs: ["update", "patch"]
-  - nonResourceURLs:
-    - /api
-    - /api/*
-    - /apis
-    - /apis/*
-    - /healthz
-    - /livez
-    - /openapi
-    - /openapi/*
-    - /readyz
-    - /version
-    - /version/
-    verbs:
-    - get
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments/status"]
+  verbs: ["update", "patch"]
+- nonResourceURLs: ["*"]
+  verbs: ["get"]
