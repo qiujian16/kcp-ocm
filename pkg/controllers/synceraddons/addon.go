@@ -20,10 +20,13 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -34,7 +37,22 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
-const addonPrefix = "syncer-"
+const (
+	addonPrefix = "syncer-"
+
+	defaultSyncerImage = "quay.io/qiujian/syncer:latest"
+
+	clusterJson = `{
+		"apiVersion": "cluster.example.dev/v1alpha1",
+		"kind": "Cluster",
+		"metadata": {
+			"name": "guestbook1"
+		},
+		"spec": {
+			"kubeconfig": ""
+		}
+	}`
+)
 
 // An addon-framework implementation to deploy syncer and register the syncer to a lcluster on kcp
 // It also needs to setup the rbac on lcluster for the syncer.
@@ -52,28 +70,27 @@ var (
 	genericScheme = runtime.NewScheme()
 	genericCodecs = serializer.NewCodecFactory(genericScheme)
 	genericCodec  = genericCodecs.UniversalDeserializer()
+
+	permisionFiles = []string{
+		"manifests/kcp_clusterrolebinding.yaml",
+	}
+
+	deployFiles = []string{
+		"manifests/clusterrolebinding.yaml",
+		"manifests/namespace.yaml",
+		"manifests/deployment.yaml",
+		"manifests/service_account.yaml",
+	}
+
+	clusterGVR = schema.GroupVersionResource{
+		Group:    "cluster.example.dev",
+		Version:  "v1alpha1",
+		Resource: "clusters",
+	}
 )
 
 //go:embed manifests
 var manifestFiles embed.FS
-
-var permisionFiles = []string{
-	"manifests/kcp_clusterrolebinding.yaml",
-	"manifests/kcp_clusterrole.yaml",
-	// This is the crd of the deployment, it is just to ensure that when syncer is deployed
-	// the crd is already in the logical cluster.
-	// TODO we should consider creating this when workspace is created instead of here.
-	"manifests/apps_deployments.yaml",
-}
-
-var deployFiles = []string{
-	"manifests/clusterrolebinding.yaml",
-	"manifests/namespace.yaml",
-	"manifests/deployment.yaml",
-	"manifests/service_account.yaml",
-}
-
-const defaultSyncerImage = "quay.io/qiujian/syncer:latest"
 
 func init() {
 	scheme.AddToScheme(genericScheme)
@@ -212,7 +229,7 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 		return err
 	}
 
-	apiExtensionClient, err := apiextensionsclient.NewForConfig(kconfig)
+	dynamicClient, err := dynamic.NewForConfig(kconfig)
 	if err != nil {
 		return err
 	}
@@ -220,15 +237,17 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 	// apply syncer permission to the lcluster
 	groups := agent.DefaultGroups(clusterName, addonName)
 	config := struct {
-		Cluster string
-		Group   string
+		Cluster   string
+		Workspace string
+		Group     string
 	}{
-		Cluster: clusterName,
-		Group:   groups[0],
+		Cluster:   clusterName,
+		Workspace: workspace,
+		Group:     groups[0],
 	}
 
 	results := resourceapply.ApplyDirectly(context.Background(),
-		resourceapply.NewKubeClientHolder(kubeclient).WithAPIExtensionsClient(apiExtensionClient),
+		resourceapply.NewKubeClientHolder(kubeclient),
 		recorder,
 		func(name string) ([]byte, error) {
 			file, err := manifestFiles.ReadFile(name)
@@ -246,7 +265,29 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 		}
 	}
 
-	return nil
+	return s.applyCluster(dynamicClient, clusterName)
+}
+
+func (s *syncerAddon) applyCluster(dynamicClient dynamic.Interface, cluster string) error {
+	_, err := dynamicClient.Resource(clusterGVR).Get(context.Background(), cluster, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
+		return err
+	}
+
+	obj := &unstructured.Unstructured{}
+	err = obj.UnmarshalJSON([]byte(clusterJson))
+
+	if err != nil {
+		return err
+	}
+
+	obj.SetName(cluster)
+	_, err = dynamicClient.Resource(clusterGVR).Create(context.Background(), obj, metav1.CreateOptions{})
+	return err
 }
 
 // buildKubeconfig builds a kubeconfig based on a rest config template with a cert/key pair

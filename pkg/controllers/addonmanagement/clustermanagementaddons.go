@@ -2,16 +2,21 @@ package addonmanagement
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"strings"
 
+	"github.com/openshift/library-go/pkg/assets"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/synceraddons"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
@@ -29,6 +34,9 @@ import (
 // This ensure that all syncers for this cluster will be spawned later.
 
 const cmaddonFinalizer = "addon.open-cluster-management.io/cleanup"
+
+//go:embed manifests
+var manifestFiles embed.FS
 
 type clusterManagementAddonController struct {
 	addonClient                  addonv1alpha1client.Interface
@@ -117,6 +125,10 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 		return c.removeFinalizer(ctx, cmaddon)
 	}
 
+	if err := c.applyKCPClusterCRD(cmaddon.Name, syncCtx.Recorder()); err != nil {
+		return err
+	}
+
 	// start addonmanager
 	if c.sycnerAddonMap[cmaddon.Name] != nil {
 		return nil
@@ -145,6 +157,53 @@ func (c *clusterManagementAddonController) removeFinalizer(ctx context.Context, 
 		addon.Finalizers = copiedFinalizers
 		_, err := c.addonClient.AddonV1alpha1().ClusterManagementAddOns().Update(ctx, addon, metav1.UpdateOptions{})
 		return err
+	}
+
+	return nil
+}
+
+func (c *clusterManagementAddonController) applyKCPClusterCRD(workspace string, recorder events.Recorder) error {
+	kconfig := rest.CopyConfig(c.kcpRestConfig)
+	kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
+
+	kubeclient, err := kubernetes.NewForConfig(kconfig)
+	if err != nil {
+		return err
+	}
+
+	apiExtensionClient, err := apiextensionsclient.NewForConfig(kconfig)
+	if err != nil {
+		return err
+	}
+
+	config := struct {
+		Cluster string
+	}{
+		Cluster: workspace,
+	}
+
+	results := resourceapply.ApplyDirectly(context.Background(),
+		resourceapply.NewKubeClientHolder(kubeclient).WithAPIExtensionsClient(apiExtensionClient),
+		recorder,
+		func(name string) ([]byte, error) {
+			file, err := manifestFiles.ReadFile(name)
+			if err != nil {
+				return nil, err
+			}
+			return assets.MustCreateAssetFromTemplate(name, file, config).Data, nil
+		},
+		"manifests/cluster.example.dev_clusters.yaml",
+		"manifests/kcp_clusterrole.yaml",
+		// This is the crd of the deployment, it is just to ensure that when syncer is deployed
+		// the crd is already in the logical cluster.
+		// TODO we should consider creating this when workspace is created instead of here.
+		"manifests/apps_deployments.yaml",
+	)
+
+	for _, result := range results {
+		if result.Error != nil {
+			return result.Error
+		}
 	}
 
 	return nil
