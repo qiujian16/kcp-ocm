@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
@@ -83,6 +84,28 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 	}
 
 	workspace := workspaceFromObject(cluster)
+
+	// remove addons if it is not needed
+	addons, err := c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, addon := range addons {
+		if !strings.HasPrefix(addon.Name, "syncer") {
+			continue
+		}
+
+		if len(workspace) != 0 && addon.Name == addonName(workspace) {
+			continue
+		}
+
+		err := c.addonClient.AddonV1alpha1().ManagedClusterAddOns(clusterName).Delete(ctx, addon.Name, metav1.DeleteOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
 	if len(workspace) == 0 {
 		// clean addons if any
 		return nil

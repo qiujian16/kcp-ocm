@@ -33,7 +33,10 @@ import (
 // maintains an syncer-addon for each lcluster
 // This ensure that all syncers for this cluster will be spawned later.
 
-const cmaddonFinalizer = "addon.open-cluster-management.io/cleanup"
+const (
+	cmaddonFinalizer = "addon.open-cluster-management.io/cleanup"
+	addonPrefix      = "syncer-"
+)
 
 //go:embed manifests
 var manifestFiles embed.FS
@@ -125,7 +128,8 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 		return c.removeFinalizer(ctx, cmaddon)
 	}
 
-	if err := c.applyKCPClusterCRD(cmaddon.Name, syncCtx.Recorder()); err != nil {
+	workspace := strings.TrimPrefix(cmaddon.Name, addonPrefix)
+	if err := c.applyKCPClusterCRD(workspace); err != nil {
 		return err
 	}
 
@@ -162,7 +166,7 @@ func (c *clusterManagementAddonController) removeFinalizer(ctx context.Context, 
 	return nil
 }
 
-func (c *clusterManagementAddonController) applyKCPClusterCRD(workspace string, recorder events.Recorder) error {
+func (c *clusterManagementAddonController) applyKCPClusterCRD(workspace string) error {
 	kconfig := rest.CopyConfig(c.kcpRestConfig)
 	kconfig.Host = fmt.Sprintf("%s/clusters/%s", kconfig.Host, workspace)
 
@@ -176,21 +180,15 @@ func (c *clusterManagementAddonController) applyKCPClusterCRD(workspace string, 
 		return err
 	}
 
-	config := struct {
-		Cluster string
-	}{
-		Cluster: workspace,
-	}
-
 	results := resourceapply.ApplyDirectly(context.Background(),
 		resourceapply.NewKubeClientHolder(kubeclient).WithAPIExtensionsClient(apiExtensionClient),
-		recorder,
+		c.eventRecorder,
 		func(name string) ([]byte, error) {
 			file, err := manifestFiles.ReadFile(name)
 			if err != nil {
 				return nil, err
 			}
-			return assets.MustCreateAssetFromTemplate(name, file, config).Data, nil
+			return assets.MustCreateAssetFromTemplate(name, file, nil).Data, nil
 		},
 		"manifests/cluster.example.dev_clusters.yaml",
 		"manifests/kcp_clusterrole.yaml",
