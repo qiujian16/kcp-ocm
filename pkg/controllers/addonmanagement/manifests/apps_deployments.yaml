@@ -107,6 +107,12 @@ spec:
                 properties:
                   metadata:
                     description: 'Standard object''s metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata'
+                    properties:
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: labels
+                        type: object
                     type: object
                   spec:
                     description: 'Specification of the desired behavior of the pod. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status'

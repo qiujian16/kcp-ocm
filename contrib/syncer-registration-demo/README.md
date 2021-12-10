@@ -10,7 +10,7 @@ openssl req -x509 -new -nodes -key rootca.key -sha256 -days 1024 -out rootca.crt
 3. start kcp with client ca enabled
 
 ```
-./bin/kcp start --install_cluster_controller --client-ca-file rootca.crt
+./bin/kcp start --client-ca-file rootca.crt
 ```
 
 4. start the controller with the following command
@@ -19,6 +19,8 @@ openssl req -x509 -new -nodes -key rootca.key -sha256 -days 1024 -out rootca.crt
 ```
 Note: ensure the kcp-kubconfig has the server address that can be reachable from spoke to the kcp server.
 
-2. Create a clustermanagementaddon resource from cm.yaml on the hub. It indicates a workspace with the name of "test" on kcp
+4. Create a clustermanagementaddon resource from cm.yaml on the hub. It indicates a workspace with the name of "test" on kcp
 
-3. Add annotation "kcp-lcluster: test" to a managedcluster
+5. `kubectl annotate managedcluster cluster2 kcp-lcluster=test`
+
+6. start the splitter 
