@@ -1,26 +1,5 @@
-1. build kcp using `https://github.com/qiujian16/kcp/tree/rbac`
+1. setup a 1 hub/2 cluster environment with the cluster name as cluster1 and cluster2. Use script here https://github.com/open-cluster-management-io/OCM/tree/main/solutions/setup-dev-environment to setup on kind
 
-2. create client ca and key so controller can sign csr
+2. run `./demo-setup.sh`
 
-```
-openssl genrsa -out rootca.key 2048
-openssl req -x509 -new -nodes -key rootca.key -sha256 -days 1024 -out rootca.crt
-```
-
-3. start kcp with client ca enabled
-
-```
-./bin/kcp start --client-ca-file rootca.crt
-```
-
-4. start the controller with the following command
-```
-./kcp-ocm manager --kubeconfig <hub kubeconfig> --kcp-ca rootca.crt --kcp-key rootca.key --kcp-kubeconfig <kcp-kubeconfig> --namespace default
-```
-Note: ensure the kcp-kubconfig has the server address that can be reachable from spoke to the kcp server.
-
-4. Create a clustermanagementaddon resource from cm.yaml on the hub. It indicates a workspace with the name of "test" on kcp
-
-5. `kubectl annotate managedcluster cluster2 kcp-lcluster=test`
-
-6. start the splitter 
+3. run `demo` in aother terminal

@@ -1,0 +1,92 @@
+#!/bin/bash
+
+DEMO_DIR="$( dirname "${BASH_SOURCE[0]}" )"
+. ${DEMO_DIR}/demo-magic
+
+ROOT_DIR="$( cd ${DEMO_DIR}/../.. && pwd)"
+KUBECONFIG_DIR=${KUBECONFIG_DIR:-${DEMO_DIR}/kubeconfig}
+KCP_ROOT="${DEMO_DIR}/kcp"
+
+TYPE_SPEED=30
+# PROMPT_AFTER=1
+DEMO_PROMPT="☸️ $ "
+
+# colors
+RED='\033[0;31m'          # Red
+GREEN='\033[0;32m'        # Green
+YELLOW='\033[0;33m'       # Yellow
+
+# function wait() {
+#   if [[ -n "${NO_WAIT}" ]]; then
+#     sleep 2
+#   else
+#     if [[ -n "${1-}" ]]; then
+#       sleep "$1"
+#     else
+#       wait
+#     fi
+#   fi
+# }
+
+function comment() {
+  echo -e '\033[0;33m>>> '$1' <<<\033[0m'
+}
+
+clear
+
+comment "On the open-cluster-management hub"
+export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
+
+pe "kubectl get managedcluster"
+
+wait
+comment "Create a new clustermanagementaddon which maps to a workspace named as test"
+
+pe "cat cm.yaml"
+pe "kubectl apply -f cm.yaml"
+
+wait
+comment "Enable syncer on clusters"
+
+pe "kubectl annotate managedcluster cluster1 kcp-lcluster=test"
+pe "kubectl annotate managedcluster cluster2 kcp-lcluster=test"
+pe "kubectl get csr"
+pe "kubectl get managedclusteraddon --all-namespaces"
+
+export KUBECONFIG=${KCP_ROOT}/.kcp/admin.kubeconfig
+#workaround for a kcp issue https://github.com/kcp-dev/kcp/issues/157 
+kubectl get namespace default &> /dev/null || kubectl create namespace default
+#end workaround
+
+kubectl config view --minify=true --raw=true > ${KUBECONFIG_DIR}/admin.kubeconfig
+kubectl config view --minify=true --raw=true | sed 's/\:6443/\:6443\/clusters\/test/g' > ${KUBECONFIG_DIR}/demo.kubeconfig
+
+wait
+clear
+
+comment 'On KCP logical cluster name "test"'
+export KUBECONFIG=${KUBECONFIG_DIR}/demo.kubeconfig
+pe "kubectl config view --minify | grep server:"
+pe "kubectl get crd"
+pe "kubectl get cluster"
+pe "kubectl get clusterrolebinding"
+
+comment "Starting splitter for test ..."
+(exec ./${KCP_ROOT}/bin/deployment-splitter --kubeconfig ../${KUBECONFIG_DIR}/demo.kubeconfig) &> splitter.log &
+SPLITTER_PID=$!
+echo "KCP server started: $SPLITTER_PID" 
+
+comment 'Creating deployment on logical cluster'
+DEPLOYMENT_NAMESPACE="default"
+kubectl get namespace ${DEPLOYMENT_NAMESPACE} &> /dev/null || pe "kubectl create namespace ${DEPLOYMENT_NAMESPACE}" 
+pe "kubectl apply -f nginx.yaml -n ${DEPLOYMENT_NAMESPACE}"
+
+wait
+pe "kubectl get deployment"
+
+wait
+clear
+
+#TODO
+##on managedclusters 
+#show deployment being created
