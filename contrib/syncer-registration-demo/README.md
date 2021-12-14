@@ -2,4 +2,4 @@
 
 2. run `./demo-setup.sh`
 
-3. run `demo` in aother terminal
+3. run `demo` in another terminal
