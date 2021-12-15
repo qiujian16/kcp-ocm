@@ -19,6 +19,10 @@ ROOT_DIR="$( cd ${DEMO_ROOT}/../.. && pwd)"
 KUBECONFIG_DIR=${CLUSTERS_DIR:-${DEMO_ROOT}/kubeconfig}
 KCP_ROOT="${DEMO_ROOT}/kcp"
 
+comment "Grab hub.kubeconfig"
+mkdir -p kubeconfig
+pe "kubectl config view --raw=true --minify=true --context=kind-hub > kubeconfig/hub.kubeconfig"
+
 comment "Building kcp..."
 if [ ! -d "${KCP_ROOT}" ]; then
     git clone https://github.com/qiujian16/kcp.git
