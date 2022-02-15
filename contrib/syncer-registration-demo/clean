@@ -1,0 +1,5 @@
+unset KUBECONFIG
+kind delete clusters hub cluster1 cluster2
+rm -rf ./kcp
+rm -rf kubeconfig
+rm rootca.crt rootca.key kcp.log splitter.log kcp-ocm.log

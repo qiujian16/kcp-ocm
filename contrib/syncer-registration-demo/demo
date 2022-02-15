@@ -1,0 +1,106 @@
+#!/bin/bash
+
+DEMO_DIR="$( dirname "${BASH_SOURCE[0]}" )"
+. ${DEMO_DIR}/demo-magic
+
+ROOT_DIR="$( cd ${DEMO_DIR}/../.. && pwd)"
+KUBECONFIG_DIR=${KUBECONFIG_DIR:-${DEMO_DIR}/kubeconfig}
+KCP_ROOT="${DEMO_DIR}/kcp"
+
+TYPE_SPEED=30
+# PROMPT_AFTER=1
+DEMO_PROMPT="☸️ $ "
+
+# colors
+RED='\033[0;31m'          # Red
+GREEN='\033[0;32m'        # Green
+YELLOW='\033[0;33m'       # Yellow
+
+# function wait() {
+#   if [[ -n "${NO_WAIT}" ]]; then
+#     sleep 2
+#   else
+#     if [[ -n "${1-}" ]]; then
+#       sleep "$1"
+#     else
+#       wait
+#     fi
+#   fi
+# }
+
+function comment() {
+  echo -e '\033[0;33m>>> '$1' <<<\033[0m'
+}
+
+clear
+
+export KUBECONFIG=${KCP_ROOT}/.kcp/admin.kubeconfig
+
+comment "As a KCP admin, I create a WorkspaceShard that corresponds to the current KCP server on the KCP"
+pe "cat ${DEMO_DIR}/workspace/workspaceshard.yaml"
+pe "kubectl create secret generic kubeconfig --from-file=kubeconfig=${KUBECONFIG}"
+pe "kubectl apply -f ${DEMO_DIR}/workspace/workspaceshard.yaml"
+
+comment "As a KCP admin, I create a KCP workspace and assign this workspace to a developer"
+pe "cat ${DEMO_DIR}/workspace/workspace.yaml"
+pe "kubectl apply -f ${DEMO_DIR}/workspace/workspace.yaml"
+pe "cat ${DEMO_DIR}/workspace/clusterrole.yaml"
+pe "kubectl apply -f ${DEMO_DIR}/workspace/clusterrole.yaml"
+pe "cat ${DEMO_DIR}/workspace/clusterrolebinding.yaml"
+pe "kubectl apply -f ${DEMO_DIR}/workspace/clusterrolebinding.yaml"
+
+unset KUBECONFIG
+
+export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
+
+comment "kcp-ocm controller created a ClusterManagementAddOn to map the workspace on the ocm hub"
+pe "kubectl get clustermanagementaddons --watch"
+
+unset KUBECONFIG
+
+comment "kcp-ocm controller created necessary crds in the KCP workspace"
+export KUBECONFIG=${KCP_ROOT}/.kcp/admin.kubeconfig
+pe "kubectl get workspaces workspace1 -o=jsonpath='{.status.baseURL}' && echo"
+kcp_base_url=$(kubectl get workspaces workspace1 -o=jsonpath='{.status.baseURL}')
+kubectl config view --minify --flatten | sed 's/\:6443/\:6443\/clusters\/admin_workspace1/g' > ${KUBECONFIG_DIR}/workspace1.admin.kubeconfig
+
+export KUBECONFIG=${KUBECONFIG_DIR}/workspace1.admin.kubeconfig
+pe "kubectl config view | grep server:"
+pe "kubectl get crd"
+unset KUBECONFIG
+
+comment "As a developer, I have a clusterset with two clusters"
+export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
+pe "kubectl get managedclusterset"
+pe "kubectl get managedclusters --show-labels"
+comment "As a developer, I link my clusterset with a KCP workspace"
+pe "kubectl annotate managedclusterset demo \"kcp-workspace=workspace1\" --overwrite"
+
+comment "kcp-ocm controller created ManagedClusterAddOn for each mananged cluster to deploy kcp-syncer"
+pe "kubectl get managedclusteraddon --all-namespaces"
+unset KUBECONFIG
+
+comment "KCP syncer on the managed cluster cluster1"
+export KUBECONFIG=${KUBECONFIG_DIR}/cluster1.kubeconfig
+pe "kubectl -n kcp-syncer-workspace1 get pods --watch"
+unset KUBECONFIG
+
+comment "KCP syncer on the managed cluster cluster2"
+export KUBECONFIG=${KUBECONFIG_DIR}/cluster2.kubeconfig
+pe "kubectl -n kcp-syncer-workspace1 get pods --watch"
+unset KUBECONFIG
+
+clear
+
+comment "Starting splitter for test ..."
+(exec ./${KCP_ROOT}/bin/deployment-splitter --kubeconfig ${KUBECONFIG_DIR}/workspace1.admin.kubeconfig) &>> splitter.log &
+SPLITTER_PID=$!
+echo "KCP server started: $SPLITTER_PID" 
+
+comment 'As a developer, I create deployment in my KCP workspace'
+DEPLOYMENT_NAMESPACE="default"
+pe "kubectl --insecure-skip-tls-verify=true --token dev-user-token --server=${kcp_base_url} create namespace ${DEPLOYMENT_NAMESPACE}" 
+pe "kubectl --insecure-skip-tls-verify=true --token dev-user-token --server=${kcp_base_url} apply -f nginx.yaml -n ${DEPLOYMENT_NAMESPACE}"
+
+#wait
+pe "kubectl --insecure-skip-tls-verify=true --token dev-user-token --server=${kcp_base_url} get deployment --watch"

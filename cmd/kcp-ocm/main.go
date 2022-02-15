@@ -35,8 +35,8 @@ func main() {
 
 func newOCMCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "work",
-		Short: "Spoke Cluster Work",
+		Use:   "kcp-ocm",
+		Short: "kcp ocm integration",
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 			os.Exit(1)
