@@ -74,7 +74,7 @@ export KUBECONFIG=${KUBECONFIG_DIR}/hub.kubeconfig
 pe "kubectl get managedclusterset"
 pe "kubectl get managedclusters --show-labels"
 comment "As a developer, I link my clusterset with a KCP workspace"
-pe "kubectl annotate managedclusterset demo \"kcp-workspace=workspace1\" --overwrite"
+pe "kubectl annotate managedclusterset dev \"kcp-workspace=workspace1\" --overwrite"
 
 comment "kcp-ocm controller created ManagedClusterAddOn for each mananged cluster to deploy kcp-syncer"
 pe "kubectl get managedclusteraddon --all-namespaces"

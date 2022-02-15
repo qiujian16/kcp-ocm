@@ -40,6 +40,11 @@ rm -f *.log
 rm -rf kubeconfig
 mkdir -p kubeconfig
 
+if [ ! -n "$KCPIP" ]; then
+    echo "The KCP external accessible IP is required. Please set it by export KCPIP=<kcp_external_accessible_ip>."
+    exit 1
+fi
+
 comment "Validating ocm hub..."
 kubectl config view --minify --flatten --context=kind-hub > kubeconfig/hub.kubeconfig
 kubectl config view --minify --flatten --context=kind-cluster1 > kubeconfig/cluster1.kubeconfig
@@ -55,13 +60,14 @@ if [[ "$?" != 0 ]]; then
     unset KUBECONFIG
     exit 1
 fi
-# ensure a clear env
+
+comment "Cleaning the demo env..."
 hubcleanup
 
-# create a demo clusterset and add managed cluster to it
+comment "Create a clusterset and add managed clusters to it"
 kubectl apply -f clusterset.yaml
-kubectl label managedclusters cluster1 cluster.open-cluster-management.io/clusterset=demo --overwrite
-kubectl label managedclusters cluster2 cluster.open-cluster-management.io/clusterset=demo --overwrite
+kubectl label managedclusters cluster1 cluster.open-cluster-management.io/clusterset=dev --overwrite
+kubectl label managedclusters cluster2 cluster.open-cluster-management.io/clusterset=dev --overwrite
 
 unset KUBECONFIG
 
