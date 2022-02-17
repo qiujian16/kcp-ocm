@@ -46,6 +46,8 @@ comment "After I linked my ManagedClusterSet with a KCP workspace, ocm will"
 comment "deploy kcp-syncer to all managed clusters in my ManagedClusterSet"
 unset KUBECONFIG
 
+echo ""
+
 comment "kcp-syncer on the managed cluster cluster1"
 export KUBECONFIG=${KUBECONFIG_DIR}/cluster1.kubeconfig
 pe "kubectl -n kcp-syncer-workspace1 get pods --watch"
