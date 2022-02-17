@@ -49,5 +49,6 @@ pe "cat ${DEMO_DIR}/workspace/clusterrole.yaml"
 pe "kubectl apply -f ${DEMO_DIR}/workspace/clusterrole.yaml"
 pe "cat ${DEMO_DIR}/workspace/clusterrolebinding.yaml"
 pe "kubectl apply -f ${DEMO_DIR}/workspace/clusterrolebinding.yaml"
+pe "kubectl get workspaces workspace1 -o=jsonpath='{.status.baseURL}' && echo"
 
 unset KUBECONFIG

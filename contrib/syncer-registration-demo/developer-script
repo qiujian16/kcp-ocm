@@ -66,10 +66,6 @@ unset KUBECONFIG
 SPLITTER_PID=$!
 
 comment 'As a developer, I create deployment in my KCP workspace'
-export KUBECONFIG=${KCP_ROOT}/.kcp/admin.kubeconfig
-pe "kubectl get workspaces workspace1 -o=jsonpath='{.status.baseURL}' && echo"
-unset KUBECONFIG
-
 DEPLOYMENT_NAMESPACE="default"
 pe "kubectl --insecure-skip-tls-verify=true --token dev-user-token --server=${kcp_base_url} create namespace ${DEPLOYMENT_NAMESPACE}" 
 pe "kubectl --insecure-skip-tls-verify=true --token dev-user-token --server=${kcp_base_url} apply -f nginx.yaml -n ${DEPLOYMENT_NAMESPACE}"
