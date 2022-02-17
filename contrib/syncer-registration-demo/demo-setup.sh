@@ -109,7 +109,6 @@ comment "Starting KCP server ..."
 rm -rf ${KCP_ROOT}/.kcp
 (cd ${KCP_ROOT} && exec ./bin/kcp start --install-workspace-scheduler --client-ca-file ../rootca.crt --token-auth-file ../kcp.tokens) &>> kcp.log &
 KCP_PID=$!
-echo "KCP server started: $KCP_PID" 
 
 kill -0 $KCP_PID
 if [[ "$?" != 0 ]]; then
@@ -120,6 +119,8 @@ fi
 comment "Waiting for KCP server to be up and running..."
 #TODO: smarter wait
 sleep 10
+
+echo "KCP server started: $KCP_PID"
 
 comment "Ensure the default namespace in the kcp"
 export KUBECONFIG=${KCP_ROOT}/.kcp/admin.kubeconfig
@@ -139,7 +140,6 @@ ${ROOT_DIR}/kcp-ocm manager \
     --kcp-key="${DEMO_ROOT}/rootca.key" \
     --namespace=default &>> kcp-ocm.log &
 KCP_OCM_PID=$!
-echo "KCP-OCM controller started: $KCP_OCM_PID"
 
 echo "Waiting for KCP-OCM controller to be up and running..." 
 sleep 10
@@ -150,6 +150,8 @@ if [[ "$?" != 0 ]]; then
     kill $KCP_PID
     exit 1
 fi
+
+echo "KCP-OCM controller started: $KCP_OCM_PID"
 
 comment "Press any key to stop KCP server and KCP_OCM controller"
 wait
