@@ -41,7 +41,7 @@ pe "cat ${DEMO_DIR}/workspace/workspaceshard.yaml"
 pe "kubectl create secret generic kubeconfig --from-file=kubeconfig=${KUBECONFIG}"
 pe "kubectl apply -f ${DEMO_DIR}/workspace/workspaceshard.yaml"
 
-comment "As a KCP admin, I create a KCP workspace and assign this workspace to a developer"
+comment "As a KCP admin, I create a KCP workspace"
 pe "cat ${DEMO_DIR}/workspace/workspace.yaml"
 pe "kubectl apply -f ${DEMO_DIR}/workspace/workspace.yaml"
 comment "As a KCP admin, I assign this workspace to a developer"

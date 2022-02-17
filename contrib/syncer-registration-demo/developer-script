@@ -43,8 +43,7 @@ comment "As a developer, I link my ManagedClusterSet with a KCP workspace"
 pe "kubectl annotate managedclusterset dev \"kcp-workspace=workspace1\" --overwrite"
 
 comment "After I linked my ManagedClusterSet with a KCP workspace, ocm will"
-comment "deploy kcp-syncer to all clusters in my ManagedClusterSet"
-#pe "kubectl get managedclusteraddon --all-namespaces"
+comment "deploy kcp-syncer to all managed clusters in my ManagedClusterSet"
 unset KUBECONFIG
 
 comment "kcp-syncer on the managed cluster cluster1"
