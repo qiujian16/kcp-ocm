@@ -45,6 +45,8 @@ if [ ! -n "$KCPIP" ]; then
     exit 1
 fi
 
+comment "Setup the demo environment..."
+
 comment "Validating ocm hub..."
 kubectl config view --minify --flatten --context=kind-hub > kubeconfig/hub.kubeconfig
 kubectl config view --minify --flatten --context=kind-cluster1 > kubeconfig/cluster1.kubeconfig
@@ -54,6 +56,7 @@ if [ ! -f "$KUBECONFIG" ]; then
     echo "$KUBECONFIG does not exist. Please generate kubeconfig for hub."
     exit 1
 fi
+comment "The hub has two managed clusters"
 kubectl get managedclusters
 if [[ "$?" != 0 ]]; then
     echo "Failed to apply managed cluster set on the hub cluster."
