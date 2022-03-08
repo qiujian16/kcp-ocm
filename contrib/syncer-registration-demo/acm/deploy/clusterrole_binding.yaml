@@ -9,4 +9,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kcp-acm-sa
-    namespace: defautl
+    namespace: kcp-demo
+
