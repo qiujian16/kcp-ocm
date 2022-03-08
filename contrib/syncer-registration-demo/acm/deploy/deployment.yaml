@@ -1,0 +1,39 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kcp-acm-controller
+  labels:
+    app: kcp-acm-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcp-acm-controller
+  template:
+    metadata:
+      labels:
+        app: kcp-acm-controller
+    spec:
+      serviceAccountName: kcp-acm-sa
+      containers:
+      - name: kcp-acm-controller
+        image: quay.io/skeeey/ocm-kcp:latest
+        imagePullPolicy: Always
+        args:
+          - "/kcp-ocm"
+          - "manager"
+          - "--kcp-ca=/var/kcp-acm/ca/rootca.crt"
+          - "--kcp-key=/var/kcp-acm/ca/rootca.key"
+          - "--kcp-kubeconfig=/var/kcp-acm/kcp/admin.kubeconfig"
+        volumeMounts:
+        - name: kcp-acm-integration-ca
+          mountPath: "/var/kcp-acm/ca"
+        - name: kcp-admin-kubeconfig
+          mountPath: "/var/kcp-acm/kcp"
+      volumes:
+      - name: kcp-acm-integration-ca
+        secret:
+          secretName: kcp-acm-integration-ca
+      - name: kcp-admin-kubeconfig
+        secret:
+          secretName: kcp-admin-kubeconfig

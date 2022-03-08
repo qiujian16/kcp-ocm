@@ -1,0 +1,9 @@
+namespace: default
+
+resources:
+- ./service_account.yaml
+- ./clusterrole.yaml
+- ./clusterrole_binding.yaml
+- ./role.yaml
+- ./role_binding.yaml
+- ./deployment.yaml

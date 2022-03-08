@@ -14,6 +14,7 @@ import (
 	"k8s.io/component-base/logs"
 
 	ocmcmd "github.com/qiujian16/kcp-ocm/pkg/cmd"
+	"github.com/qiujian16/kcp-ocm/pkg/sidecar"
 	"github.com/qiujian16/kcp-ocm/pkg/version"
 )
 
@@ -35,8 +36,8 @@ func main() {
 
 func newOCMCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "work",
-		Short: "Spoke Cluster Work",
+		Use:   "kcp-ocm",
+		Short: "kcp ocm integration",
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 			os.Exit(1)
@@ -50,6 +51,7 @@ func newOCMCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(ocmcmd.NewManager())
+	cmd.AddCommand(sidecar.NewSidecar())
 
 	return cmd
 }

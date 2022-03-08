@@ -12,10 +12,10 @@ import (
 func NewManager() *cobra.Command {
 	o := controllers.NewOCMManagerOptions()
 	cmd := controllercmd.
-		NewControllerCommandConfig("work-agent", version.Get(), o.RunManager).
+		NewControllerCommandConfig("kcp-manager", version.Get(), o.RunManager).
 		NewCommand()
-	cmd.Use = "agent"
-	cmd.Short = "Start the Cluster Registration Agent"
+	cmd.Use = "manager"
+	cmd.Short = "Start the KCP OCM integration manager"
 
 	o.AddFlags(cmd)
 	return cmd
