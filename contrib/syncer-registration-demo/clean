@@ -1,4 +1,0 @@
-unset KUBECONFIG
-
-kind delete clusters hub cluster1 cluster2
-

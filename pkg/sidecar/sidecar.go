@@ -33,10 +33,12 @@ const (
 )
 
 type SidecarOptions struct {
-	RootDirectory string
+	ExternalAccessibleIP string
+	RootDirectory        string
 }
 
 func (o *SidecarOptions) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&o.ExternalAccessibleIP, "external-accessible-ip", o.ExternalAccessibleIP, "KCP external accessible IP.")
 	fs.StringVar(&o.RootDirectory, "root-directory", o.RootDirectory, "KCP root directory.")
 }
 
@@ -62,6 +64,7 @@ func (o *SidecarOptions) Run(ctx context.Context, controllerContext *controllerc
 
 	ctrl := NewKCPKubeconfigSecretController(
 		kubeClient.CoreV1(),
+		o.ExternalAccessibleIP,
 		controllerContext.OperatorNamespace,
 		o.RootDirectory,
 		namespacedKubeInformerFactory.Core().V1().Secrets(),
@@ -77,17 +80,19 @@ func (o *SidecarOptions) Run(ctx context.Context, controllerContext *controllerc
 
 type kcpKubeconfigSecretController struct {
 	kubeCoreClient               corev1client.CoreV1Interface
+	kcpExternalAccessibleIP      string
 	kcpKubeconfigSecretNamespace string
 	kcpKubeconfigDirectory       string
 }
 
 func NewKCPKubeconfigSecretController(
 	kubeCoreClient corev1client.CoreV1Interface,
-	kcpKubeconfigSecretNamespace, kcpKubeconfigDirectory string,
+	kcpExternalAccessibleIP, kcpKubeconfigSecretNamespace, kcpKubeconfigDirectory string,
 	secretInformer corev1informers.SecretInformer,
 	recorder events.Recorder) factory.Controller {
 	s := &kcpKubeconfigSecretController{
 		kubeCoreClient:               kubeCoreClient,
+		kcpExternalAccessibleIP:      kcpExternalAccessibleIP,
 		kcpKubeconfigSecretNamespace: kcpKubeconfigSecretNamespace,
 		kcpKubeconfigDirectory:       kcpKubeconfigDirectory,
 	}
@@ -114,12 +119,12 @@ func NewKCPKubeconfigSecretController(
 }
 
 func (s *kcpKubeconfigSecretController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
-	return DumpSecret(ctx, s.kubeCoreClient, s.kcpKubeconfigSecretNamespace, s.kcpKubeconfigDirectory, syncCtx.Recorder())
+	return DumpSecret(ctx, s.kubeCoreClient, s.kcpExternalAccessibleIP, s.kcpKubeconfigSecretNamespace, s.kcpKubeconfigDirectory, syncCtx.Recorder())
 }
 
 func DumpSecret(ctx context.Context,
 	kubeCoreClient corev1client.CoreV1Interface,
-	secretNamespace, kcpKubeconfigDirectory string,
+	externalAccessibleIP, secretNamespace, kcpKubeconfigDirectory string,
 	recorder events.Recorder) error {
 	kcpKubeconfigFilePath := path.Clean(path.Join(kcpKubeconfigDirectory, kcpKubeconfigName))
 	if _, err := os.Stat(kcpKubeconfigFilePath); err != nil {
@@ -131,7 +136,7 @@ func DumpSecret(ctx context.Context,
 		return err
 	}
 
-	kubeconfigBytes, err := clientcmd.Write(buildKCPAdminKubeconfig(kcpRestConfig, secretNamespace))
+	kubeconfigBytes, err := clientcmd.Write(buildKCPAdminKubeconfig(kcpRestConfig, externalAccessibleIP))
 	if err != nil {
 		return err
 	}
@@ -159,11 +164,10 @@ func DumpSecret(ctx context.Context,
 	return err
 }
 
-func buildKCPAdminKubeconfig(restConfig *rest.Config, namespace string) clientcmdapi.Config {
+func buildKCPAdminKubeconfig(restConfig *rest.Config, externalAccessibleIP string) clientcmdapi.Config {
 	return clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{"admin": {
-			// Server:                   fmt.Sprintf("https://kcp.%s.svc:6443", namespace),
-			Server:                   "https://10.0.118.32:6443",
+			Server:                   fmt.Sprintf("https://%s:6443", externalAccessibleIP),
 			CertificateAuthorityData: restConfig.CAData,
 			TLSServerName:            restConfig.TLSClientConfig.ServerName,
 		}},

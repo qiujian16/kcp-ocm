@@ -1,42 +1,42 @@
 #!/bin/bash
 
 # The namespace in which the kcp-acm integration controller will be installed
-KCP_ACM_CTRL_NAMESPACE=${KCP_ACM_CTRL_NAMESPACE:-"default"}
+if [ ! -n "$KCP_ACM_INTEGRATION_NAMESPACE" ]; then
+    echo "The controller installation namespace is not defined, please set it by export KCP_ACM_INTEGRATION_NAMESPACE=<namespace>."
+    exit 1
+fi
 
 BUILD_IMAGE=${BUILD_IMAGE:-"false"}
 
-DEMO_ROOT="$(dirname "${BASH_SOURCE[0]}")"
+DEMO_DIR="$(dirname "${BASH_SOURCE[0]}")"
 
-cp ${DEMO_ROOT}/deploy/kustomization.yaml ${DEMO_ROOT}/deploy/kustomization.yaml.bak
-sed "s/default/${KCP_ACM_CTRL_NAMESPACE}/g" ${DEMO_ROOT}/deploy/kustomization.yaml.bak > ${DEMO_ROOT}/deploy/kustomization.yaml
+cp ${DEMO_DIR}/deploy/kustomization.yaml ${DEMO_DIR}/deploy/kustomization.yaml.bak
+sed "s/default/${KCP_ACM_INTEGRATION_NAMESPACE}/g" ${DEMO_DIR}/deploy/kustomization.yaml.bak > ${DEMO_DIR}/deploy/kustomization.yaml
 
 if [ "$1"x = "clean"x ]; then
     rm -f rootca.crt rootca.key
-    kubectl delete secret kcp-acm-integration-ca -n ${KCP_ACM_CTRL_NAMESPACE} --ignore-not-found
-    kubectl delete -k ${DEMO_ROOT}/deploy
-    mv ${DEMO_ROOT}/deploy/kustomization.yaml.bak ${DEMO_ROOT}/deploy/kustomization.yaml
+    kubectl delete secret kcp-acm-integration-ca -n ${KCP_ACM_INTEGRATION_NAMESPACE} --ignore-not-found
+    kubectl delete -k ${DEMO_DIR}/deploy
+    mv ${DEMO_DIR}/deploy/kustomization.yaml.bak ${DEMO_DIR}/deploy/kustomization.yaml
     exit 0
 fi
 
 # build image if it is required
 if [ "$BUILD_IMAGE" = "true" ]; then
-    ROOT_DIR="$(cd ${DEMO_ROOT}/../../.. && pwd)"
-
-    pushd $ROOT_DIR
+    REPO_DIR="$(cd ${DEMO_DIR}/../../.. && pwd)"
+    pushd $REPO_DIR
     make images
     popd
 fi
 
-kubectl get namespace ${KCP_ACM_CTRL_NAMESPACE} &> /dev/null || kubectl create namespace ${KCP_ACM_CTRL_NAMESPACE}
+kubectl get namespace ${KCP_ACM_INTEGRATION_NAMESPACE} &> /dev/null || kubectl create namespace ${KCP_ACM_INTEGRATION_NAMESPACE}
 
-openssl genrsa -out ${DEMO_ROOT}/rootca.key 2048
-openssl req -x509 -new -nodes -key ${DEMO_ROOT}/rootca.key -sha256 -days 1024 -subj "/C=CN/ST=AA/L=AA/O=OCM/CN=OCM" -out ${DEMO_ROOT}/rootca.crt
+openssl genrsa -out ${DEMO_DIR}/rootca.key 2048
+openssl req -x509 -new -nodes -key ${DEMO_DIR}/rootca.key -sha256 -days 1024 -subj "/C=CN/ST=AA/L=AA/O=OCM/CN=OCM" -out ${DEMO_DIR}/rootca.crt
 
-kubectl delete secret kcp-acm-integration-ca -n ${KCP_ACM_CTRL_NAMESPACE} --ignore-not-found
-kubectl create secret generic kcp-acm-integration-ca -n ${KCP_ACM_CTRL_NAMESPACE} --from-file=${DEMO_ROOT}/rootca.crt --from-file=${DEMO_ROOT}/rootca.key
+kubectl delete secret kcp-acm-integration-ca -n ${KCP_ACM_INTEGRATION_NAMESPACE} --ignore-not-found
+kubectl create secret generic kcp-acm-integration-ca -n ${KCP_ACM_INTEGRATION_NAMESPACE} --from-file=${DEMO_DIR}/rootca.crt --from-file=${DEMO_DIR}/rootca.key
 
-#TODO allow set the kcp server admin config
+kubectl apply -k ${DEMO_DIR}/deploy
 
-kubectl apply -k ${DEMO_ROOT}/deploy
-
-mv ${DEMO_ROOT}/deploy/kustomization.yaml.bak ${DEMO_ROOT}/deploy/kustomization.yaml
+mv ${DEMO_DIR}/deploy/kustomization.yaml.bak ${DEMO_DIR}/deploy/kustomization.yaml
