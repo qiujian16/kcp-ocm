@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+wait_command() {
+  local command="$1"; shift
+  local wait_seconds="${1:-40}"; shift # 40 seconds as default timeout
+
+  until [[ $((wait_seconds--)) -eq 0 ]] || eval "$command &> /dev/null" ; do sleep 1; done
+
+  ((++wait_seconds))
+}
+
+comment() {
+  echo -e '\033[0;33m>>> '$1' <<<\033[0m'
+}
+
+
+generate_ca() {
+  openssl genrsa -out "$1"/rootca.key 2048
+  openssl req -x509 -new -nodes -key "$1"/rootca.key -sha256 -days 1024 -subj "/C=CN/ST=AA/L=AA/O=OCM/CN=OCM" -out "${1}"/rootca.crt
+}

@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -38,13 +39,11 @@ import (
 )
 
 const (
-	addonPrefix = "syncer-"
-
-	defaultSyncerImage = "quay.io/qiujian/syncer:latest"
+	defaultSyncerImage = "quay.io/skeeey/kcp:latest"
 
 	clusterJson = `{
-		"apiVersion": "cluster.example.dev/v1alpha1",
-		"kind": "Cluster",
+		"apiVersion": "workload.kcp.dev/v1alpha1",
+		"kind": "WorkloadCluster",
 		"metadata": {
 			"name": "guestbook1"
 		},
@@ -58,13 +57,17 @@ const (
 // It also needs to setup the rbac on lcluster for the syncer.
 
 type syncerAddon struct {
-	addonName        string
-	workspaceBaseURL string
+	addonName string
 
-	syncerCA      []byte
-	syncerKey     []byte
-	kcpRestConfig *rest.Config
-	recorder      events.Recorder
+	kcpRestConfig       *rest.Config
+	kcpServer           string
+	kcpWorkspaceBaseURL string
+	kcpLogicalCluster   string
+
+	syncerCA  []byte
+	syncerKey []byte
+
+	recorder events.Recorder
 }
 
 var (
@@ -84,9 +87,9 @@ var (
 	}
 
 	clusterGVR = schema.GroupVersionResource{
-		Group:    "cluster.example.dev",
+		Group:    "workload.kcp.dev",
 		Version:  "v1alpha1",
-		Resource: "clusters",
+		Resource: "workloadclusters",
 	}
 )
 
@@ -98,14 +101,20 @@ func init() {
 }
 
 func NewSyncerAddon(addonName, workspaceBaseURL string, ca, key []byte, kcpRestConfig *rest.Config, recoder events.Recorder) agent.AgentAddon {
-	// needs to handle error later
+	kcpURL, err := url.Parse(workspaceBaseURL)
+	if err != nil {
+		panic(err)
+	}
+
 	return &syncerAddon{
-		addonName:        addonName,
-		workspaceBaseURL: workspaceBaseURL,
-		syncerCA:         ca,
-		syncerKey:        key,
-		kcpRestConfig:    kcpRestConfig,
-		recorder:         recoder,
+		addonName:           addonName,
+		kcpRestConfig:       kcpRestConfig,
+		kcpWorkspaceBaseURL: workspaceBaseURL,
+		kcpServer:           fmt.Sprintf("%s://%s", kcpURL.Scheme, kcpURL.Host),
+		kcpLogicalCluster:   strings.TrimPrefix(kcpURL.Path, "/clusters/"),
+		syncerCA:            ca,
+		syncerKey:           key,
+		recorder:            recoder,
 	}
 }
 
@@ -120,7 +129,7 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 	}
 
 	// create the kubeconfig to connect to kcp lcluster
-	kubeconfig := buildKubeconfig(s.kcpRestConfig, s.workspaceBaseURL)
+	kubeconfig := buildKubeconfig(s.kcpRestConfig, s.kcpServer)
 	kubeConfigData, err := clientcmd.Write(kubeconfig)
 	if err != nil {
 		return nil, err
@@ -197,15 +206,17 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 	}
 
 	manifestConfig := struct {
-		AddonName string
-		Cluster   string
-		Image     string
-		Namespace string
+		AddonName      string
+		Cluster        string
+		LogicalCluster string
+		Image          string
+		Namespace      string
 	}{
-		AddonName: s.addonName,
-		Cluster:   cluster.Name,
-		Image:     image,
-		Namespace: addon.Spec.InstallNamespace,
+		AddonName:      s.addonName,
+		Cluster:        cluster.Name,
+		LogicalCluster: s.kcpLogicalCluster,
+		Image:          image,
+		Namespace:      addon.Spec.InstallNamespace,
 	}
 
 	template, err := manifestFiles.ReadFile(file)
@@ -223,7 +234,7 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recorder events.Recorder) error {
 	// apploy clusterrolebindings for addon
 	kconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspace := strings.TrimPrefix(addonName, addonPrefix)
+	workspace := strings.TrimPrefix(addonName, "kcp-syncer-")
 
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
@@ -263,7 +274,7 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 
 	// Update config host to workspace and generate kubeclient to apploy kcp clusters
 	workspaceKconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspaceKconfig.Host = s.workspaceBaseURL
+	workspaceKconfig.Host = s.kcpWorkspaceBaseURL
 	dynamicClient, err := dynamic.NewForConfig(workspaceKconfig)
 	if err != nil {
 		return err
@@ -295,11 +306,11 @@ func (s *syncerAddon) applyCluster(dynamicClient dynamic.Interface, cluster stri
 }
 
 // buildKubeconfig builds a kubeconfig based on a rest config template with a cert/key pair
-func buildKubeconfig(clientConfig *rest.Config, workspaceBaseURL string) clientcmdapi.Config {
+func buildKubeconfig(clientConfig *rest.Config, kcpServer string) clientcmdapi.Config {
 	// Build kubeconfig.
 	kubeconfig := clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
-			Server:                workspaceBaseURL,
+			Server:                kcpServer,
 			InsecureSkipTLSVerify: true,
 		}},
 		// Define auth based on the obtained client cert.

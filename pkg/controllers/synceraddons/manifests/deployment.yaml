@@ -22,6 +22,7 @@ spec:
         args:
           - "/syncer"
           - "--cluster={{ .Cluster }}"
+          - "--from_cluster={{ .LogicalCluster }}"
           - "--from_kubeconfig=/syncer-kubeconfig/kubeconfig"
         securityContext:
           allowPrivilegeEscalation: false

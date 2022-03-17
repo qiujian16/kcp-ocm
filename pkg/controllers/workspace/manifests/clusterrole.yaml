@@ -10,7 +10,7 @@ rules:
   resourceNames:
   - {{ .Workspace }}
   resources:
-  - workspaces
+  - clusterworkspaces
   verbs:
   - get
 - apiGroups:
@@ -18,7 +18,7 @@ rules:
   resourceNames:
   - {{ .Workspace }}
   resources:
-  - workspaces/content
+  - clusterworkspaces/content
   verbs:
   - view
   - edit

@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonv1alpha1client "open-cluster-management.io/api/client/addon/clientset/versioned"
@@ -66,7 +67,7 @@ func NewClusterController(
 			},
 			func(obj interface{}) bool {
 				accessor, _ := meta.Accessor(obj)
-				return strings.HasPrefix(accessor.GetName(), "syncer")
+				return strings.HasPrefix(accessor.GetName(), "kcp-syncer")
 			},
 			addonInformers.Informer(),
 		).
@@ -113,44 +114,53 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 
 	clusterSetName, existed := cluster.Labels[clusterSetLabel]
 	if !existed {
-		// TODO the cluster does not have the clusterset label, try to clean sync addons
-		return nil
+		// the cluster is not in a clusterset, try to clean its sync addons
+		return c.removeAddons(ctx, clusterName, sets.NewString())
 	}
 
 	// find the clustersets that contains this managed cluster
-	clusterSet, err := c.managedClusterSetLister.Get(clusterSetName)
+	_, err = c.managedClusterSetLister.Get(clusterSetName)
 	switch {
 	case errors.IsNotFound(err):
-		// TODO clean sync addons
-		return nil
+		// clean sync addons
+		return c.removeAddons(ctx, clusterName, sets.NewString())
 	case err != nil:
 		return err
 	}
 
-	// ensure the clusterset is binding with current namespace
-	_, err = c.managedClusterSetBindingLister.ManagedClusterSetBindings(c.namespace).Get(clusterSetName)
-	switch {
-	case errors.IsNotFound(err):
-		// TODO clean sync addons
-		return nil
-	case err != nil:
+	// ensure the clusterset is binding with a kcp workspace namespace
+	workspaces := sets.NewString()
+	clusterSetBindings, err := c.managedClusterSetBindingLister.List(labels.Everything())
+	if err != nil {
 		return err
 	}
-
-	workspace := workspaceFromObject(clusterSet)
+	for _, clusterSetBinding := range clusterSetBindings {
+		if clusterSetBinding.Name == clusterSetName {
+			workspaces.Insert(strings.TrimPrefix(clusterSetBinding.Namespace, "kcp-"))
+		}
+	}
 
 	// remove addons if it is not needed
+	if err := c.removeAddons(ctx, clusterName, workspaces); err != nil {
+		return err
+	}
+
+	// apply managedclusteraddon for each workspace namespace
+	return c.applyAddons(ctx, clusterName, workspaces)
+}
+
+func (c *clusterController) removeAddons(ctx context.Context, clusterName string, workspaces sets.String) error {
 	addons, err := c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).List(labels.Everything())
 	if err != nil {
 		return err
 	}
 
 	for _, addon := range addons {
-		if !strings.HasPrefix(addon.Name, "syncer") {
+		if !strings.HasPrefix(addon.Name, "kcp-syncer-") {
 			continue
 		}
 
-		if len(workspace) != 0 && addon.Name == addonName(c.namespace, workspace) {
+		if workspaces.Has(strings.TrimPrefix(addon.Name, "kcp-syncer-")) {
 			continue
 		}
 
@@ -160,42 +170,28 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 		}
 	}
 
-	if len(workspace) == 0 {
-		// clean addons if any
-		return nil
-	}
-
-	// apply managedclusteraddon
-	_, err = c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).Get(addonName(c.namespace, workspace))
-	switch {
-	case errors.IsNotFound(err):
-		addon := &addonapiv1alpha1.ManagedClusterAddOn{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      addonName(c.namespace, workspace),
-				Namespace: clusterName,
-			},
-			Spec: addonapiv1alpha1.ManagedClusterAddOnSpec{
-				InstallNamespace: fmt.Sprintf("kcp-%s", addonName(c.namespace, workspace)),
-			},
-		}
-		_, err = c.addonClient.AddonV1alpha1().ManagedClusterAddOns(clusterName).Create(ctx, addon, metav1.CreateOptions{})
-		return err
-	case err != nil:
-		return err
-	}
-
 	return nil
 }
 
-func addonName(namespace, workspace string) string {
-	return fmt.Sprintf("syncer-%s-%s", namespace, workspace)
-}
-
-func workspaceFromObject(obj interface{}) string {
-	accessor, _ := meta.Accessor(obj)
-	if len(accessor.GetAnnotations()) == 0 {
-		return ""
+func (c *clusterController) applyAddons(ctx context.Context, clusterName string, workspaces sets.String) error {
+	for workspace := range workspaces {
+		_, err := c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).Get(fmt.Sprintf("syncer-%s", workspace))
+		switch {
+		case errors.IsNotFound(err):
+			addon := &addonapiv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("kcp-syncer-%s", workspace),
+					Namespace: clusterName,
+				},
+				Spec: addonapiv1alpha1.ManagedClusterAddOnSpec{
+					InstallNamespace: fmt.Sprintf("kcp-syncer-%s", workspace),
+				},
+			}
+			_, err = c.addonClient.AddonV1alpha1().ManagedClusterAddOns(clusterName).Create(ctx, addon, metav1.CreateOptions{})
+			return err
+		case err != nil:
+			return err
+		}
 	}
-
-	return accessor.GetAnnotations()["kcp-workspace"]
+	return nil
 }

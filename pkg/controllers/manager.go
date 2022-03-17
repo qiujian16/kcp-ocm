@@ -24,7 +24,7 @@ import (
 var workspaceGVR = schema.GroupVersionResource{
 	Group:    "tenancy.kcp.dev",
 	Version:  "v1alpha1",
-	Resource: "workspaces",
+	Resource: "clusterworkspaces",
 }
 
 // OCMManagerOptions defines the flags for ocm manager
@@ -65,6 +65,11 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		return err
 	}
 
+	kubeClient, err := kubernetes.NewForConfig(controllerContext.KubeConfig)
+	if err != nil {
+		return err
+	}
+
 	clusterClient, err := clusterclient.NewForConfig(controllerContext.KubeConfig)
 	if err != nil {
 		return err
@@ -100,7 +105,6 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 	)
 
 	clusterManagementAddonController := addonmanagement.NewClusterManagementAddonController(
-		controllerContext.OperatorNamespace,
 		kcpDynamicClient,
 		addonClient,
 		addonInformers.Addon().V1alpha1().ClusterManagementAddOns(),
@@ -112,9 +116,9 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 	)
 
 	workspaceController := workspace.NewWorkspaceController(
-		controllerContext.OperatorNamespace,
 		kcpRestConfig,
 		kcpKubeClient,
+		kubeClient,
 		addonClient,
 		kcpDynamicInformer.ForResource(workspaceGVR),
 		controllerContext.EventRecorder,

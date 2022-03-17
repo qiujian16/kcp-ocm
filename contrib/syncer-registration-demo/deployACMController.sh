@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # The namespace in which the kcp-acm integration controller will be installed
 if [ ! -n "$KCP_ACM_INTEGRATION_NAMESPACE" ]; then

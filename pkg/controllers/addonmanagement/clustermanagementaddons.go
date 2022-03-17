@@ -2,7 +2,6 @@ package addonmanagement
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/openshift/library-go/pkg/controller/factory"
@@ -31,17 +30,15 @@ import (
 
 const (
 	cmaddonFinalizer = "addon.open-cluster-management.io/cleanup"
-	addonPrefix      = "syncer"
 )
 
 var workspaceGVR = schema.GroupVersionResource{
 	Group:    "tenancy.kcp.dev",
 	Version:  "v1alpha1",
-	Resource: "workspaces",
+	Resource: "clusterworkspaces",
 }
 
 type clusterManagementAddonController struct {
-	namespace                    string
 	kcpDynamicClient             dynamic.Interface
 	addonClient                  addonv1alpha1client.Interface
 	clusterManagementAddonLister addonlisterv1alpha1.ClusterManagementAddOnLister
@@ -54,7 +51,6 @@ type clusterManagementAddonController struct {
 }
 
 func NewClusterManagementAddonController(
-	namespace string,
 	kcpDynamicClient dynamic.Interface,
 	addonClient addonv1alpha1client.Interface,
 	clusterManagementAddonInformer addoninformerv1alpha1.ClusterManagementAddOnInformer,
@@ -64,7 +60,6 @@ func NewClusterManagementAddonController(
 	recorder events.Recorder,
 ) factory.Controller {
 	c := &clusterManagementAddonController{
-		namespace:                    namespace,
 		kcpDynamicClient:             kcpDynamicClient,
 		addonClient:                  addonClient,
 		clusterManagementAddonLister: clusterManagementAddonInformer.Lister(),
@@ -83,7 +78,7 @@ func NewClusterManagementAddonController(
 		},
 		func(obj interface{}) bool {
 			accessor, _ := meta.Accessor(obj)
-			return strings.HasPrefix(accessor.GetName(), "syncer-")
+			return strings.HasPrefix(accessor.GetName(), "kcp-syncer-")
 		},
 		clusterManagementAddonInformer.Informer()).
 		WithSync(c.sync).ToController("syncer-addon-controller", recorder)
@@ -103,7 +98,7 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 	}
 
 	// ensure the mapped workspace exists
-	workspaceName := strings.TrimPrefix(cmaddon.Name, fmt.Sprintf("%s-%s-", addonPrefix, c.namespace))
+	workspaceName := strings.TrimPrefix(cmaddon.Name, "kcp-syncer-")
 	workspace, err := c.kcpDynamicClient.Resource(workspaceGVR).Get(ctx, workspaceName, metav1.GetOptions{})
 	switch {
 	case errors.IsNotFound(err):

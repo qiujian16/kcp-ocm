@@ -14,7 +14,6 @@ import (
 	"k8s.io/component-base/logs"
 
 	ocmcmd "github.com/qiujian16/kcp-ocm/pkg/cmd"
-	"github.com/qiujian16/kcp-ocm/pkg/sidecar"
 	"github.com/qiujian16/kcp-ocm/pkg/version"
 )
 
@@ -51,7 +50,6 @@ func newOCMCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(ocmcmd.NewManager())
-	cmd.AddCommand(sidecar.NewSidecar())
 
 	return cmd
 }

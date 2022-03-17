@@ -13,6 +13,7 @@ import (
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonv1alpha1client "open-cluster-management.io/api/client/addon/clientset/versioned"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -30,25 +31,24 @@ import (
 var manifestFiles embed.FS
 
 type workspaceController struct {
-	namespace       string
 	kcpRestConfig   *rest.Config
 	kcpKubeClient   kubernetes.Interface
+	kubeClient      kubernetes.Interface
 	addonClient     addonv1alpha1client.Interface
 	workspaceLister cache.GenericLister
 	eventRecorder   events.Recorder
 }
 
 func NewWorkspaceController(
-	namespace string,
 	kcpRestConfig *rest.Config,
-	kcpKubeClient kubernetes.Interface,
+	kcpKubeClient, kubeClient kubernetes.Interface,
 	addonClient addonv1alpha1client.Interface,
 	workspaceInformer informers.GenericInformer,
 	recorder events.Recorder) factory.Controller {
 	w := &workspaceController{
-		namespace:       namespace,
 		kcpRestConfig:   kcpRestConfig,
 		kcpKubeClient:   kcpKubeClient,
+		kubeClient:      kubeClient,
 		addonClient:     addonClient,
 		workspaceLister: workspaceInformer.Lister(),
 		eventRecorder:   recorder.WithComponentSuffix("syncer-workspace-controller"),
@@ -85,17 +85,7 @@ func (w *workspaceController) sync(ctx context.Context, syncCtx factory.SyncCont
 		panic(err)
 	}
 
-	phase, found, err := unstructured.NestedString(unstructuredWorkspace, "status", "phase")
-	if err != nil {
-		panic(err)
-	}
-	if !found {
-		return nil
-	}
-	if phase != "Active" {
-		//TODO: may also delete the cluster management addon
-		return nil
-	}
+	// TODO check phase status when kcp becomes stable
 
 	baseURL, found, err := unstructured.NestedString(unstructuredWorkspace, "status", "baseURL")
 	if err != nil {
@@ -110,14 +100,35 @@ func (w *workspaceController) sync(ctx context.Context, syncCtx factory.SyncCont
 		return err
 	}
 
-	// TODO for now, kcp cannot support rbac in a workspace, so we create a clusterrole for workspace
-	// in the kcp as a temporary way
-	// "manifests/kcp_clusterrole.yaml",
+	// TODO for now, kcp cannot support rbac in a workspace, so we create a
+	// clusterrole for workspace in the kcp as a temporary way
 	if err := w.applyWorkspaceClusterrole(ctx, workspaceName); err != nil {
 		return err
 	}
 
-	clusterManagementAddOnName := fmt.Sprintf("syncer-%s-%s", w.namespace, workspaceName)
+	// create a namespace for this workspace
+	workspaceNamespaceName := fmt.Sprintf("kcp-%s", workspaceName)
+	_, err = w.kubeClient.CoreV1().Namespaces().Get(ctx, workspaceNamespaceName, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		if _, err := w.kubeClient.CoreV1().Namespaces().Create(
+			ctx,
+			&corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: workspaceNamespaceName,
+				},
+			},
+			metav1.CreateOptions{},
+		); err != nil {
+			return err
+		}
+
+		syncCtx.Recorder().Eventf("WorkspaceNamespaceCreated", "The namespace %s is created", workspaceNamespaceName)
+	}
+	if err != nil {
+		return err
+	}
+
+	clusterManagementAddOnName := fmt.Sprintf("kcp-syncer-%s", workspaceName)
 	_, err = w.addonClient.AddonV1alpha1().ClusterManagementAddOns().Get(ctx, clusterManagementAddOnName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		if _, err := w.addonClient.AddonV1alpha1().ClusterManagementAddOns().Create(
@@ -138,10 +149,8 @@ func (w *workspaceController) sync(ctx context.Context, syncCtx factory.SyncCont
 		}
 
 		syncCtx.Recorder().Eventf("ClusterManagementAddOnCreated", "The ClusterManagementAddOn %s is created", clusterManagementAddOnName)
-
 		return nil
 	}
-
 	if err != nil {
 		return err
 	}
@@ -159,7 +168,7 @@ func (w *workspaceController) applyWorkspaceClusterrole(ctx context.Context, wor
 				Name      string
 				Workspace string
 			}{
-				Name:      fmt.Sprintf("%s-%s-syncer", w.namespace, workspaceName),
+				Name:      fmt.Sprintf("kcp-syncer-%s", workspaceName),
 				Workspace: workspaceName,
 			}
 
@@ -206,7 +215,6 @@ func (w *workspaceController) applyCRDsToWorkspace(ctx context.Context, baseURL 
 			}
 			return assets.MustCreateAssetFromTemplate(name, file, nil).Data, nil
 		},
-		"manifests/cluster.example.dev_clusters.yaml",
 		// This is the crd of the deployment, it is just to ensure that when syncer is deployed
 		"manifests/apps_deployments.yaml",
 	)
