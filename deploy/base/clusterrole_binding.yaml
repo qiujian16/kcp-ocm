@@ -1,13 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kcp-acm-integration
+  name: kcp-acm-integration-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kcp-acm-integration
+  name: kcp-acm-integration-controller
 subjects:
   - kind: ServiceAccount
     name: kcp-acm-sa
-    namespace: kcp-demo
-
+    namespace: open-cluster-management

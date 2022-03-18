@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 rm -rf kubeconfig
+rm -rf .kcp
 rm -f rootca.*
 rm -f *.log
 rm -f kcp-started

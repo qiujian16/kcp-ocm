@@ -32,16 +32,20 @@ spec:
           privileged: false
           runAsNonRoot: true
         volumeMounts:
+{{- if .CertsEnabled }}
         - name: syncer-clientcert-secret
           mountPath: "/syncer-certs"
           readOnly: true
+{{- end }}
         - name: syncer-kubeconfig
           mountPath: /syncer-kubeconfig
           readOnly: true
       volumes:
+{{- if .CertsEnabled }}
       - name: syncer-clientcert-secret
         secret:
           secretName: {{ .AddonName }}-kcp.dev-syncer-signer-client-cert
+{{- end }}
       - name: syncer-kubeconfig
         secret:
           secretName: syncer-kubeconfig

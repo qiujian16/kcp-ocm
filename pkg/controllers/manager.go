@@ -60,6 +60,8 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		return err
 	}
 
+	//kcpKubeClient.CoreV1().ServiceAccounts("").CreateToken()
+
 	kcpDynamicClient, err := dynamic.NewForConfig(kcpRestConfig)
 	if err != nil {
 		return err
@@ -80,14 +82,17 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		return err
 	}
 
-	ca, err := ioutil.ReadFile(o.KCPRootCAFile)
-	if err != nil {
-		return err
-	}
+	var ca, key []byte
+	if o.KCPRootCAFile != "" && o.KCPKeyFile != "" {
+		ca, err = ioutil.ReadFile(o.KCPRootCAFile)
+		if err != nil {
+			return err
+		}
 
-	key, err := ioutil.ReadFile(o.KCPKeyFile)
-	if err != nil {
-		return err
+		key, err = ioutil.ReadFile(o.KCPKeyFile)
+		if err != nil {
+			return err
+		}
 	}
 
 	addonInformers := addoninformers.NewSharedInformerFactory(addonClient, 10*time.Minute)

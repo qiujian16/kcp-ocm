@@ -5,6 +5,8 @@ DEMO_DIR="$(cd ${CURRENT_DIR} && pwd)"
 ROOT_DIR="$( cd ${CURRENT_DIR}/../.. && pwd)"
 
 BUILD_BINARY=${BUILD_BINARY:-"false"}
+IN_CLUSTER=${IN_CLUSTER:-"false"}
+ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"true"}
 
 source "${DEMO_DIR}"/utils
 
@@ -52,9 +54,21 @@ if [ -z "$KCP_KUBECONFIG" ]; then
     wait_command "test -f ${DEMO_DIR}/kcp-started"
 fi
 
-${ROOT_DIR}/kcp-ocm manager \
-    --kcp-kubeconfig="${KCP_KUBECONFIG}" \
-    --kubeconfig="${HUB_KUBECONFIG}" \
-    --kcp-ca="${DEMO_DIR}/rootca.crt" \
-    --kcp-key="${DEMO_DIR}/rootca.key" \
-    --namespace=default
+CTRL_ARGS="--namespace=default --kcp-kubeconfig=${KCP_KUBECONFIG} --kubeconfig=${HUB_KUBECONFIG}"
+
+if [ "$ENABLE_CLIENT_CA" = "true" ]; then
+    if [ -z "$CLIENT_CA_FILE" ]; then
+        # the client ca file is not defined, use our generated ca and key
+        export CLIENT_CA_FILE="${DEMO_DIR}"/rootca.crt
+        export CLIENT_CA_KEY_FILE="${DEMO_DIR}"/rootca.key
+        CTRL_ARGS="${CTRL_ARGS} --kcp-ca=${CLIENT_CA_FILE} --kcp-key=${CLIENT_CA_KEY_FILE}"
+    fi
+fi
+
+if [ "$IN_CLUSTER" = "true" ]; then
+    echo "todo deploy the controller"
+    exit 0
+fi
+
+
+${ROOT_DIR}/kcp-ocm manager ${CTRL_ARGS}

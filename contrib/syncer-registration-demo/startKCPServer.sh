@@ -2,9 +2,12 @@
 
 CURRENT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 DEMO_DIR="$(cd ${CURRENT_DIR} && pwd)"
+KCP_DIR="${DEMO_DIR}"/kcp
 
 BUILD_BINARY=${BUILD_BINARY:-"false"}
-KCP_DIR="${DEMO_DIR}"/kcp
+ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"true"}
+
+KCP_SERVER_ARGS=""
 
 source "${DEMO_DIR}"/utils
 
@@ -24,11 +27,17 @@ if [ "$BUILD_BINARY" = "true" ]; then
     popd
 fi
 
-# TODO make this optional
-generate_ca "${DEMO_DIR}"
+if [ "$ENABLE_CLIENT_CA" = "true" ]; then
+    if [ -z "$CLIENT_CA_FILE" ]; then
+        # the client ca file is not defined, generate ca by ourselves
+        generate_ca "${DEMO_DIR}"
+        CLIENT_CA_FILE="${DEMO_DIR}"/rootca.crt
+        KCP_SERVER_ARGS="--client-ca-file ${CLIENT_CA_FILE}"
+    fi
+fi
 
 echo "Starting KCP server ..."
-(cd "${DEMO_DIR}" && exec "${KCP_DIR}"/bin/kcp start --client-ca-file "${DEMO_DIR}"/rootca.crt) &> kcp.log &
+(cd "${DEMO_DIR}" && exec "${KCP_DIR}"/bin/kcp start $KCP_SERVER_ARGS) &> kcp.log &
 KCP_PID=$!
 echo "KCP server started: $KCP_PID"
 
@@ -38,7 +47,7 @@ wait_command "grep 'Ready to start controllers' ${DEMO_DIR}/kcp.log"
 
 touch "${DEMO_DIR}/kcp-started"
 
-echo "Prepare a workspace shard for current KCP server"
+echo "Create a KCP workspaceshard for current KCP server"
 export KUBECONFIG=${DEMO_DIR}/.kcp/admin.kubeconfig
 kubectl create namespace default 
 kubectl create secret generic kubeconfig --from-file=kubeconfig=${KUBECONFIG}

@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	defaultSyncerImage = "quay.io/skeeey/kcp:latest"
+	defaultSyncerImage = "quay.io/skeeey/kcp-syncer:latest"
 
 	clusterJson = `{
 		"apiVersion": "workload.kcp.dev/v1alpha1",
@@ -64,8 +64,9 @@ type syncerAddon struct {
 	kcpWorkspaceBaseURL string
 	kcpLogicalCluster   string
 
-	syncerCA  []byte
-	syncerKey []byte
+	certsEnabled bool
+	syncerCA     []byte
+	syncerKey    []byte
 
 	recorder events.Recorder
 }
@@ -106,12 +107,18 @@ func NewSyncerAddon(addonName, workspaceBaseURL string, ca, key []byte, kcpRestC
 		panic(err)
 	}
 
+	certsEnabled := false
+	if ca != nil && key != nil {
+		certsEnabled = true
+	}
+
 	return &syncerAddon{
 		addonName:           addonName,
 		kcpRestConfig:       kcpRestConfig,
 		kcpWorkspaceBaseURL: workspaceBaseURL,
 		kcpServer:           fmt.Sprintf("%s://%s", kcpURL.Scheme, kcpURL.Host),
 		kcpLogicalCluster:   strings.TrimPrefix(kcpURL.Path, "/clusters/"),
+		certsEnabled:        certsEnabled,
 		syncerCA:            ca,
 		syncerKey:           key,
 		recorder:            recoder,
@@ -129,7 +136,7 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 	}
 
 	// create the kubeconfig to connect to kcp lcluster
-	kubeconfig := buildKubeconfig(s.kcpRestConfig, s.kcpServer)
+	kubeconfig := buildKubeconfig(s.certsEnabled, s.kcpRestConfig, s.kcpServer)
 	kubeConfigData, err := clientcmd.Write(kubeconfig)
 	if err != nil {
 		return nil, err
@@ -152,6 +159,18 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 }
 
 func (s *syncerAddon) GetAgentAddonOptions() agent.AgentAddonOptions {
+	if !s.certsEnabled {
+		return agent.AgentAddonOptions{
+			AddonName: s.addonName,
+			Registration: &agent.RegistrationOption{
+				CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonapiv1alpha1.RegistrationConfig {
+					return []addonapiv1alpha1.RegistrationConfig{}
+				},
+				PermissionConfig: s.setupAgentPermissions,
+			},
+		}
+	}
+
 	return agent.AgentAddonOptions{
 		AddonName: s.addonName,
 		Registration: &agent.RegistrationOption{
@@ -211,12 +230,14 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 		LogicalCluster string
 		Image          string
 		Namespace      string
+		CertsEnabled   bool
 	}{
 		AddonName:      s.addonName,
 		Cluster:        cluster.Name,
 		LogicalCluster: s.kcpLogicalCluster,
 		Image:          image,
 		Namespace:      addon.Spec.InstallNamespace,
+		CertsEnabled:   s.certsEnabled,
 	}
 
 	template, err := manifestFiles.ReadFile(file)
@@ -306,17 +327,16 @@ func (s *syncerAddon) applyCluster(dynamicClient dynamic.Interface, cluster stri
 }
 
 // buildKubeconfig builds a kubeconfig based on a rest config template with a cert/key pair
-func buildKubeconfig(clientConfig *rest.Config, kcpServer string) clientcmdapi.Config {
+func buildKubeconfig(certsEnabled bool, clientConfig *rest.Config, kcpServer string) clientcmdapi.Config {
 	// Build kubeconfig.
 	kubeconfig := clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
 			Server:                kcpServer,
 			InsecureSkipTLSVerify: true,
 		}},
-		// Define auth based on the obtained client cert.
+		// TODO use sa token instead of this
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{"default-auth": {
-			ClientCertificate: "/syncer-certs/tls.crt",
-			ClientKey:         "/syncer-certs/tls.key",
+			Token: clientConfig.BearerToken,
 		}},
 		// Define a context that connects the auth info and cluster, and set it as the default
 		Contexts: map[string]*clientcmdapi.Context{"default-context": {
@@ -325,6 +345,14 @@ func buildKubeconfig(clientConfig *rest.Config, kcpServer string) clientcmdapi.C
 			Namespace: "configuration",
 		}},
 		CurrentContext: "default-context",
+	}
+
+	if certsEnabled {
+		// Define auth based on the obtained client cert.
+		kubeconfig.AuthInfos = map[string]*clientcmdapi.AuthInfo{"default-auth": {
+			ClientCertificate: "/syncer-certs/tls.crt",
+			ClientKey:         "/syncer-certs/tls.key",
+		}}
 	}
 
 	return kubeconfig

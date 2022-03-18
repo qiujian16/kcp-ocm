@@ -1,11 +1,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: kcp-acm-integration
+  name: kcp-acm-integration-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: kcp-acm-integration
+  name: kcp-acm-integration-controller
 subjects:
   - kind: ServiceAccount
-    name: kcp-acm-sa
+    name: kcp-acm-integration-controller-sa
