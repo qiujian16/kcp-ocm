@@ -34,16 +34,14 @@ pe "kubectl -n kcp-syncer-workspace1 get pods --watch --kubeconfig kubeconfig/cl
 comment "kcp-syncer on the managed cluster cluster2"
 pe "kubectl -n kcp-syncer-workspace1 get pods --watch --kubeconfig kubeconfig/cluster2.kubeconfig"
 
-export KUBECONFIG=${DEMO_DIR}/.kcp/admin.kubeconfig
-kubectl config view --minify --flatten | sed 's/root\:default/default\:workspace1/g' > ${DEMO_DIR}/.kcp/workspace.kubeconfig
-unset KUBECONFIG
+# export KUBECONFIG=${DEMO_DIR}/.kcp/admin.kubeconfig
+# kubectl config view --minify --flatten | sed 's/root\:default/default\:workspace1/g' > ${DEMO_DIR}/.kcp/workspace.kubeconfig
+# unset KUBECONFIG
 
-exit
+# # starting splitter for test ...
+# (exec ./${DEMO_DIR}/kcp/bin/deployment-splitter --kubeconfig ${DEMO_DIR}/.kcp/workspace.kubeconfig) &>> splitter.log &
+# SPLITTER_PID=$!
 
-# starting splitter for test ...
-(exec ./${DEMO_DIR}/kcp/bin/deployment-splitter --kubeconfig ${DEMO_DIR}/.kcp/workspace.kubeconfig) &>> splitter.log &
-SPLITTER_PID=$!
-
-comment 'Create a deployment in the KCP workspace'
-pe "kubectl apply -f deployment/nginx.yaml --kubeconfig .kcp/workspace.kubeconfig"
-pe "kubectl get deployment --watch --kubeconfig .kcp/workspace.kubeconfig"
+# comment 'Create a deployment in the KCP workspace'
+# pe "kubectl apply -f deployment/nginx.yaml --kubeconfig .kcp/workspace.kubeconfig"
+# pe "kubectl get deployment --watch --kubeconfig .kcp/workspace.kubeconfig"
