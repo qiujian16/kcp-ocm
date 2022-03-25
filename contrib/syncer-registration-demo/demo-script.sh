@@ -19,7 +19,7 @@ pe "kubectl apply -f workspace/workspace.yaml --kubeconfig .kcp/admin.kubeconfig
 # pe "kubectl get workspaces workspace1 -oyaml"
 
 comment "A namespace that corresponds the kcp workspace will be created in the OCM hub"
-pe "kubectl get ns --kubeconfig kubeconfig/hub.kubeconfig -w"
+pe "kubectl get ns --watch --kubeconfig kubeconfig/hub.kubeconfig"
 
 comment "There is a clusterset in the OCM hub"
 pe "kubectl get managedclusterset,managedclusters --show-labels --kubeconfig kubeconfig/hub.kubeconfig"
@@ -38,8 +38,6 @@ unset KUBECONFIG
 
 # starting splitter for test ...
 (cd "${DEMO_DIR}" && exec ${DEMO_DIR}/kcp/bin/deployment-splitter --kubeconfig ${DEMO_DIR}/.kcp/workspace.kubeconfig) &> splitter.log &
-SPLITTER_PID=$!
-echo $SPLITTER_PID
 
 comment 'Create a deployment in the KCP workspace'
 pe "kubectl apply -f deployment/nginx.yaml --kubeconfig .kcp/workspace.kubeconfig"

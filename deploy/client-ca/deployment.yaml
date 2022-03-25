@@ -10,8 +10,9 @@ spec:
       containers:
       - name: kcp-acm-integration-controller
         args:
-          - "/kcp-acm"
+          - "/kcp-ocm"
           - "manager"
+          - "--disable-leader-election"
           - "--kcp-kubeconfig=/var/kcp-acm/kcp/admin.kubeconfig"
           - "--kcp-ca=/var/kcp-acm/ca/rootca.crt"
           - "--kcp-key=/var/kcp-acm/ca/rootca.key"

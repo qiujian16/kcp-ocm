@@ -4,7 +4,7 @@ CURRENT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 DEMO_DIR="$(cd ${CURRENT_DIR} && pwd)"
 KCP_DIR="${DEMO_DIR}"/kcp
 
-BUILD_BINARY=${BUILD_BINARY:-"false"}
+BUILD_BINARY=${BUILD_BINARY:-"true"}
 ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"false"}
 ENABLE_USER_TOKEN=${ENABLE_USER_TOKEN:-"false"}
 
@@ -43,7 +43,7 @@ if [ "$ENABLE_USER_TOKEN" = "true" ]; then
 fi
 
 echo "Starting KCP server ..."
-(cd "${DEMO_DIR}" && exec "${KCP_DIR}"/bin/kcp start --push-mode $KCP_SERVER_ARGS) &> kcp.log &
+(cd "${DEMO_DIR}" && exec "${KCP_DIR}"/bin/kcp start $KCP_SERVER_ARGS) &> kcp.log &
 KCP_PID=$!
 echo "KCP server started: $KCP_PID"
 

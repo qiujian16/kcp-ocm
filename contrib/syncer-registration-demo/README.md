@@ -6,4 +6,4 @@
     - run `./startKCPServer.sh` to start KCP server
     - run `./startACMController.sh` to start kcp-acm integration controller in aother terminal
 
-3. Run the demo script `./demo-kcp-dev-script.sh` in aother terminal
+3. Run the demo script `./demo-script.sh` in aother terminal

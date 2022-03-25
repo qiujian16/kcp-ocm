@@ -33,11 +33,13 @@ GO_TEST_PACKAGES :=./pkg/...
 # It will generate target "image-$(1)" for building the image and binding it as a prerequisite to target "images".
 $(call build-image,$(IMAGE),$(IMAGE_REGISTRY)/$(IMAGE),./Dockerfile,.)
 
+.PHONY: deploy
 deploy:
 	$(KUBECTL) -n open-cluster-management delete secret kcp-admin-kubeconfig --ignore-not-found --kubeconfig $(HUB_KUBECONFIG)
 	$(KUBECTL) -n open-cluster-management create secret generic kcp-admin-kubeconfig --from-file=admin.kubeconfig=$(KCP_KUBECONFIG) --kubeconfig $(HUB_KUBECONFIG)
 	$(KUBECTL) apply -k deploy/base --kubeconfig $(HUB_KUBECONFIG)
 
+.PHONY: deploy-with-client-ca
 deploy-with-client-ca:
 	$(KUBECTL) -n open-cluster-management delete secret kcp-admin-kubeconfig --ignore-not-found --kubeconfig $(HUB_KUBECONFIG)
 	$(KUBECTL) -n open-cluster-management create secret generic kcp-admin-kubeconfig --from-file=admin.kubeconfig=$(KCP_KUBECONFIG) --kubeconfig $(HUB_KUBECONFIG)

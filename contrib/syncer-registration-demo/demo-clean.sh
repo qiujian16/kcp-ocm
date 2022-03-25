@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-ps ax | pgrep kcp | awk '{print $1}' | xargs kill
-
 unset KUBECONFIG
 
 rm -rf kubeconfig

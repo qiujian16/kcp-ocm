@@ -19,8 +19,9 @@ spec:
       - name: kcp-acm-integration-controller
         image: quay.io/skeeey/kcp-acm-integration-controller:latest
         args:
-          - "/kcp-acm"
+          - "/kcp-ocm"
           - "manager"
+          - "--disable-leader-election"
           - "--kcp-kubeconfig=/var/kcp-acm/kcp/admin.kubeconfig"
         volumeMounts:
         - name: kcp-admin-kubeconfig

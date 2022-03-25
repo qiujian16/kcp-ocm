@@ -8,5 +8,5 @@ roleRef:
   name: kcp-acm-integration-controller
 subjects:
   - kind: ServiceAccount
-    name: kcp-acm-sa
+    name: kcp-acm-integration-controller-sa
     namespace: open-cluster-management
