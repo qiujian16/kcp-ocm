@@ -13,3 +13,6 @@ subjects:
 - apiGroup: rbac.authorization.k8s.io
   kind: User
   name: dev-user
+- kind: ServiceAccount
+  name: default
+  namespace: default

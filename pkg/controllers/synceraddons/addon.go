@@ -33,6 +33,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/klog/v2"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -136,7 +137,11 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 	}
 
 	// create the kubeconfig to connect to kcp lcluster
-	kubeconfig := buildKubeconfig(s.certsEnabled, s.kcpRestConfig, s.kcpServer)
+	token, err := s.getAddOnSAToken()
+	if err != nil {
+		return nil, err
+	}
+	kubeconfig := s.buildKubeconfig(token)
 	kubeConfigData, err := clientcmd.Write(kubeconfig)
 	if err != nil {
 		return nil, err
@@ -253,25 +258,36 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 }
 
 func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recorder events.Recorder) error {
-	// apploy clusterrolebindings for addon
-	kconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspace := strings.TrimPrefix(addonName, "kcp-syncer-")
+	// Update config host to workspace and generate kubeclient to apploy kcp clusters
+	workspaceKconfig := rest.CopyConfig(s.kcpRestConfig)
+	workspaceKconfig.Host = s.kcpWorkspaceBaseURL
+	dynamicClient, err := dynamic.NewForConfig(workspaceKconfig)
+	if err != nil {
+		return err
+	}
+	if err := s.applyCluster(dynamicClient, clusterName); err != nil {
+		return err
+	}
 
+	// apply clusterrolebindings for addon
+	kconfig := rest.CopyConfig(s.kcpRestConfig)
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
 		return err
 	}
 
-	// apply syncer permission to the lcluster
+	workspace := strings.TrimPrefix(addonName, "kcp-syncer-")
 	groups := agent.DefaultGroups(clusterName, addonName)
 	config := struct {
-		Cluster   string
-		Workspace string
-		Group     string
+		Cluster      string
+		Workspace    string
+		Group        string
+		CertsEnabled bool
 	}{
-		Cluster:   clusterName,
-		Workspace: workspace,
-		Group:     groups[0],
+		Cluster:      clusterName,
+		Workspace:    workspace,
+		Group:        groups[0],
+		CertsEnabled: s.certsEnabled,
 	}
 
 	results := resourceapply.ApplyDirectly(context.Background(),
@@ -293,15 +309,7 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 		}
 	}
 
-	// Update config host to workspace and generate kubeclient to apploy kcp clusters
-	workspaceKconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspaceKconfig.Host = s.kcpWorkspaceBaseURL
-	dynamicClient, err := dynamic.NewForConfig(workspaceKconfig)
-	if err != nil {
-		return err
-	}
-
-	return s.applyCluster(dynamicClient, clusterName)
+	return nil
 }
 
 func (s *syncerAddon) applyCluster(dynamicClient dynamic.Interface, cluster string) error {
@@ -327,16 +335,15 @@ func (s *syncerAddon) applyCluster(dynamicClient dynamic.Interface, cluster stri
 }
 
 // buildKubeconfig builds a kubeconfig based on a rest config template with a cert/key pair
-func buildKubeconfig(certsEnabled bool, clientConfig *rest.Config, kcpServer string) clientcmdapi.Config {
-	// Build kubeconfig.
+func (s *syncerAddon) buildKubeconfig(token string) clientcmdapi.Config {
 	kubeconfig := clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
-			Server:                kcpServer,
+			Server:                s.kcpServer,
 			InsecureSkipTLSVerify: true,
 		}},
 		// TODO use sa token instead of this
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{"default-auth": {
-			Token: clientConfig.BearerToken,
+			Token: token,
 		}},
 		// Define a context that connects the auth info and cluster, and set it as the default
 		Contexts: map[string]*clientcmdapi.Context{"default-context": {
@@ -347,7 +354,7 @@ func buildKubeconfig(certsEnabled bool, clientConfig *rest.Config, kcpServer str
 		CurrentContext: "default-context",
 	}
 
-	if certsEnabled {
+	if s.certsEnabled {
 		// Define auth based on the obtained client cert.
 		kubeconfig.AuthInfos = map[string]*clientcmdapi.AuthInfo{"default-auth": {
 			ClientCertificate: "/syncer-certs/tls.crt",
@@ -391,4 +398,55 @@ func signCSR(csr *certificatesv1.CertificateSigningRequest, caCert *x509.Certifi
 		return nil, err
 	}
 	return signedCert, nil
+}
+
+func (s *syncerAddon) getAddOnSAToken() (string, error) {
+	if s.certsEnabled {
+		klog.Infof("client-ca enabled")
+		return "", nil
+	}
+
+	kconfig := rest.CopyConfig(s.kcpRestConfig)
+	kubeclient, err := kubernetes.NewForConfig(kconfig)
+	if err != nil {
+		return "", err
+	}
+
+	workspace := strings.TrimPrefix(s.addonName, "kcp-syncer-")
+	workspaceSAName := fmt.Sprintf("%s-sa", workspace)
+	sa, err := kubeclient.CoreV1().ServiceAccounts("kcp-ocm").Get(context.Background(), workspaceSAName, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		klog.Warningf("failed to get worksapce sa %s in namespace kcp-ocm", workspaceSAName)
+		return kconfig.BearerToken, nil
+	}
+	if err != nil {
+		return "", err
+	}
+
+	for _, secretRef := range sa.Secrets {
+		if !strings.HasPrefix(secretRef.Name, workspaceSAName) {
+			continue
+		}
+		secret, err := kubeclient.CoreV1().Secrets("kcp-ocm").Get(context.Background(), secretRef.Name, metav1.GetOptions{})
+		if err != nil {
+			continue
+		}
+
+		if secret.Type != corev1.SecretTypeServiceAccountToken {
+			continue
+		}
+
+		token, ok := secret.Data["token"]
+		if !ok {
+			continue
+		}
+		if len(token) == 0 {
+			continue
+		}
+
+		return string(token), nil
+	}
+
+	klog.Warningf("failed to get the token of worksapce sa %s in namespace kcp-ocm", workspaceSAName)
+	return kconfig.BearerToken, nil
 }

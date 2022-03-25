@@ -1,7 +1,9 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: default
+  name: nginx
+  labels:
+    experimental.workloads.kcp.dev/scheduling-disabled: ""
 
 ---
 
@@ -9,7 +11,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-deployment
-  namespace: default
+  namespace: nginx
 spec:
   replicas: 3 # tells deployment to run 2 pods matching the template
   selector:

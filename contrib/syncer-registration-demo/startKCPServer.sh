@@ -6,6 +6,7 @@ KCP_DIR="${DEMO_DIR}"/kcp
 
 BUILD_BINARY=${BUILD_BINARY:-"false"}
 ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"true"}
+ENABLE_USER_TOKEN=${ENABLE_USER_TOKEN:-"false"}
 
 KCP_SERVER_ARGS=""
 
@@ -32,12 +33,17 @@ if [ "$ENABLE_CLIENT_CA" = "true" ]; then
         # the client ca file is not defined, generate ca by ourselves
         generate_ca "${DEMO_DIR}"
         CLIENT_CA_FILE="${DEMO_DIR}"/rootca.crt
-        KCP_SERVER_ARGS="--client-ca-file ${CLIENT_CA_FILE}"
+        KCP_SERVER_ARGS="${KCP_SERVER_ARGS} --client-ca-file ${CLIENT_CA_FILE}"
     fi
 fi
 
+if [ "$ENABLE_USER_TOKEN" = "true" ]; then
+    echo "kcp-user-token,kcp-user,1111-1111-1111-1111,\"kcp-team\"" > kcp.tokens
+    KCP_SERVER_ARGS="${KCP_SERVER_ARGS} --token-auth-file "${DEMO_DIR}"/kcp.tokens"
+fi
+
 echo "Starting KCP server ..."
-(cd "${DEMO_DIR}" && exec "${KCP_DIR}"/bin/kcp start $KCP_SERVER_ARGS) &> kcp.log &
+(cd "${DEMO_DIR}" && exec "${KCP_DIR}"/bin/kcp start --push-mode $KCP_SERVER_ARGS) &> kcp.log &
 KCP_PID=$!
 echo "KCP server started: $KCP_PID"
 

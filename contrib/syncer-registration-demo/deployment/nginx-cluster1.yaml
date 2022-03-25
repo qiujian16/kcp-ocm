@@ -3,11 +3,9 @@ kind: Deployment
 metadata:
   name: nginx-deployment--cluster1
   labels:
-    kcp.dev/owned-by: nginx-deployment
     workloads.kcp.dev/cluster: cluster1
-  clusterName: default:workspace1
 spec:
-  replicas: 1 # tells deployment to run 2 pods matching the template
+  replicas: 1
   selector:
     matchLabels:
       app: nginx

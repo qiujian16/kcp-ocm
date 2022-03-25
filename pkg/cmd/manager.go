@@ -11,12 +11,15 @@ import (
 // NewWorkloadAgent generates a command to start workload agent
 func NewManager() *cobra.Command {
 	o := controllers.NewOCMManagerOptions()
-	cmd := controllercmd.
-		NewControllerCommandConfig("kcp-manager", version.Get(), o.RunManager).
-		NewCommand()
+	cmdConfig := controllercmd.
+		NewControllerCommandConfig("kcp-manager", version.Get(), o.RunManager)
+	cmd := cmdConfig.NewCommand()
 	cmd.Use = "manager"
 	cmd.Short = "Start the KCP OCM integration manager"
 
-	o.AddFlags(cmd)
+	flags := cmd.Flags()
+	o.AddFlags(flags)
+	flags.BoolVar(&cmdConfig.DisableLeaderElection, "disable-leader-election", false, "Disable leader election for the controller.")
+
 	return cmd
 }

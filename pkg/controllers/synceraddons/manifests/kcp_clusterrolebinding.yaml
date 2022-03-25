@@ -7,6 +7,12 @@ roleRef:
   kind: ClusterRole
   name: kcp-syncer-{{ .Workspace }}
 subjects:
-  - kind: Group
-    apiGroup: rbac.authorization.k8s.io
-    name: {{ .Group }}
+{{- if .CertsEnabled }}
+- kind: Group
+  apiGroup: rbac.authorization.k8s.io
+  name: {{ .Group }}
+{{- else }}
+- kind: ServiceAccount
+  name: {{ .Workspace }}-sa
+  namespace: kcp-ocm
+{{- end }}

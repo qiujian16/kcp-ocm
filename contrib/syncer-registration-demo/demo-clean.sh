@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
+unset KUBECONFIG
+
 rm -rf kubeconfig
 rm -rf .kcp
 rm -f rootca.*
 rm -f *.log
 rm -f kcp-started
+rm -f kcp.tokens
 
 kubectl config use-context kind-hub
 kubectl -n cluster1 delete managedclusteraddons --all

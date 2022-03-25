@@ -31,6 +31,7 @@ import (
 var manifestFiles embed.FS
 
 type workspaceController struct {
+	kcpCAEnabled    bool
 	kcpRestConfig   *rest.Config
 	kcpKubeClient   kubernetes.Interface
 	kubeClient      kubernetes.Interface
@@ -40,12 +41,14 @@ type workspaceController struct {
 }
 
 func NewWorkspaceController(
+	kcpCAEnabled bool,
 	kcpRestConfig *rest.Config,
 	kcpKubeClient, kubeClient kubernetes.Interface,
 	addonClient addonv1alpha1client.Interface,
 	workspaceInformer informers.GenericInformer,
 	recorder events.Recorder) factory.Controller {
 	w := &workspaceController{
+		kcpCAEnabled:    kcpCAEnabled,
 		kcpRestConfig:   kcpRestConfig,
 		kcpKubeClient:   kcpKubeClient,
 		kubeClient:      kubeClient,
@@ -100,13 +103,20 @@ func (w *workspaceController) sync(ctx context.Context, syncCtx factory.SyncCont
 		return err
 	}
 
+	if !w.kcpCAEnabled {
+		if err := w.createWorkspaceSA(ctx, workspaceName); err != nil {
+			return err
+		}
+		syncCtx.Recorder().Eventf("WorkspaceServiceAccountCreated", "The service account is created for workspace %s", workspaceName)
+	}
+
 	// TODO for now, kcp cannot support rbac in a workspace, so we create a
-	// clusterrole for workspace in the kcp as a temporary way
+	// clusterrole for workspaces in the kcp as a temporary way
 	if err := w.applyWorkspaceClusterrole(ctx, workspaceName); err != nil {
 		return err
 	}
 
-	// create a namespace for this workspace
+	// create a namespace for this workspace on the hub
 	workspaceNamespaceName := fmt.Sprintf("kcp-%s", workspaceName)
 	_, err = w.kubeClient.CoreV1().Namespaces().Get(ctx, workspaceNamespaceName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
@@ -128,6 +138,7 @@ func (w *workspaceController) sync(ctx context.Context, syncCtx factory.SyncCont
 		return err
 	}
 
+	// create a ClusterManagementAddOn for this workspace on the hub
 	clusterManagementAddOnName := fmt.Sprintf("kcp-syncer-%s", workspaceName)
 	_, err = w.addonClient.AddonV1alpha1().ClusterManagementAddOns().Get(ctx, clusterManagementAddOnName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
@@ -150,6 +161,47 @@ func (w *workspaceController) sync(ctx context.Context, syncCtx factory.SyncCont
 
 		syncCtx.Recorder().Eventf("ClusterManagementAddOnCreated", "The ClusterManagementAddOn %s is created", clusterManagementAddOnName)
 		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *workspaceController) createWorkspaceSA(ctx context.Context, workspaceName string) error {
+	_, err := w.kcpKubeClient.CoreV1().Namespaces().Get(ctx, "kcp-ocm", metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		if _, err := w.kcpKubeClient.CoreV1().Namespaces().Create(
+			ctx,
+			&corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "kcp-ocm",
+				},
+			},
+			metav1.CreateOptions{},
+		); err != nil {
+			return err
+		}
+	}
+	if err != nil {
+		return err
+	}
+
+	saName := fmt.Sprintf("%s-sa", workspaceName)
+	_, err = w.kcpKubeClient.CoreV1().ServiceAccounts("kcp-ocm").Get(ctx, saName, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		if _, err := w.kcpKubeClient.CoreV1().ServiceAccounts("kcp-ocm").Create(
+			ctx,
+			&corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: saName,
+				},
+			},
+			metav1.CreateOptions{},
+		); err != nil {
+			return err
+		}
 	}
 	if err != nil {
 		return err

@@ -7,7 +7,7 @@ import (
 
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/addonmanagement"
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/workspace"
-	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -29,7 +29,7 @@ var workspaceGVR = schema.GroupVersionResource{
 
 // OCMManagerOptions defines the flags for ocm manager
 type OCMManagerOptions struct {
-	KCPRootCAFile     string
+	KCPCAFile         string
 	KCPKeyFile        string
 	KCPKubeConfigFile string
 }
@@ -40,10 +40,9 @@ func NewOCMManagerOptions() *OCMManagerOptions {
 }
 
 // AddFlags register and binds the default flags
-func (o *OCMManagerOptions) AddFlags(cmd *cobra.Command) {
-	flags := cmd.Flags()
+func (o *OCMManagerOptions) AddFlags(flags *pflag.FlagSet) {
 	// This command only supports reading from config
-	flags.StringVar(&o.KCPRootCAFile, "kcp-ca", o.KCPRootCAFile, "Location of kcp ca file to connect to kcp.")
+	flags.StringVar(&o.KCPCAFile, "kcp-ca", o.KCPCAFile, "Location of kcp ca file to connect to kcp.")
 	flags.StringVar(&o.KCPKeyFile, "kcp-key", o.KCPKeyFile, "Location of kcp key file to connect to kcp.")
 	flags.StringVar(&o.KCPKubeConfigFile, "kcp-kubeconfig", o.KCPKubeConfigFile, "Location of kcp kubeconfig file to connect to kcp.")
 }
@@ -82,9 +81,14 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		return err
 	}
 
+	kcpCAEnabled := false
+	if o.KCPCAFile != "" && o.KCPKeyFile != "" {
+		kcpCAEnabled = true
+	}
+
 	var ca, key []byte
-	if o.KCPRootCAFile != "" && o.KCPKeyFile != "" {
-		ca, err = ioutil.ReadFile(o.KCPRootCAFile)
+	if kcpCAEnabled {
+		ca, err = ioutil.ReadFile(o.KCPCAFile)
 		if err != nil {
 			return err
 		}
@@ -121,6 +125,7 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 	)
 
 	workspaceController := workspace.NewWorkspaceController(
+		kcpCAEnabled,
 		kcpRestConfig,
 		kcpKubeClient,
 		kubeClient,
