@@ -137,11 +137,13 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 	}
 
 	// create the kubeconfig to connect to kcp lcluster
-	token, err := s.getAddOnSAToken()
-	if err != nil {
-		return nil, err
-	}
-	kubeconfig := s.buildKubeconfig(token)
+	// token, err := s.getAddOnSAToken()
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	//TODO: kcp cannot support use a sa to do authorization currently
+	kubeconfig := s.buildKubeconfig(s.kcpRestConfig.BearerToken)
 	kubeConfigData, err := clientcmd.Write(kubeconfig)
 	if err != nil {
 		return nil, err

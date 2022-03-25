@@ -4,9 +4,9 @@ CURRENT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 DEMO_DIR="$(cd ${CURRENT_DIR} && pwd)"
 ROOT_DIR="$( cd ${CURRENT_DIR}/../.. && pwd)"
 
-BUILD_BINARY=${BUILD_BINARY:-"true"}
+BUILD_BINARY=${BUILD_BINARY:-"false"}
 IN_CLUSTER=${IN_CLUSTER:-"false"}
-ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"true"}
+ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"false"}
 
 source "${DEMO_DIR}"/utils
 
@@ -74,4 +74,5 @@ fi
 #${ROOT_DIR}/kcp-ocm manager ${CTRL_ARGS}
 (cd "${ROOT_DIR}" && exec "${ROOT_DIR}"/kcp-ocm manager ${CTRL_ARGS}) &> kcp-ocm.log &
 KCP_OCM_PID=$!
-echo "KCP and ACM integration controller started: $KCP_OCM_PID"
+echo "KCP and ACM integration controller started: ${KCP_OCM_PID}. Press <ctrl>-C to terminate."
+wait

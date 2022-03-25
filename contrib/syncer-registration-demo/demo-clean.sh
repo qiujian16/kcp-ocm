@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+ps ax | pgrep kcp | awk '{print $1}' | xargs kill
+
 unset KUBECONFIG
 
 rm -rf kubeconfig
@@ -26,3 +28,11 @@ fi
 kubectl delete clustermanagementaddons.addon.open-cluster-management.io --all
 
 kubectl delete namespace kcp-workspace1
+
+kubectl config use-context kind-cluster1
+kubectl get ns -l workloads.kcp.dev/cluster=cluster1 | tail -1 |  awk '{print $1}'  | xargs kubectl delete ns
+
+kubectl config use-context kind-cluster2
+kubectl get ns -l workloads.kcp.dev/cluster=cluster2 | tail -1 |  awk '{print $1}'  | xargs kubectl delete ns
+
+kubectl config use-context kind-hub
