@@ -18,7 +18,7 @@ rm -rf ${DEMO_DIR}/.kcp
 if [ "$BUILD_BINARY" = "true" ]; then
     echo "Building kcp ..."
     rm -rf kcp
-    git clone --depth 1 https://github.com/skeeey/kcp.git
+    git clone --branch release-0.4 --depth 1 https://github.com/kcp-dev/kcp.git
     pushd $KCP_DIR
     make build
     if [ ! -f "bin/kcp" ]; then
@@ -53,13 +53,8 @@ wait_command "grep 'Ready to start controllers' ${DEMO_DIR}/kcp.log"
 
 touch "${DEMO_DIR}/kcp-started"
 
-echo "Create a KCP workspaceshard for current KCP server"
-export KUBECONFIG=${DEMO_DIR}/.kcp/admin.kubeconfig
-kubectl create namespace default 
-kubectl create secret generic kubeconfig --from-file=kubeconfig=${KUBECONFIG}
-kubectl apply -f "${DEMO_DIR}"/workspace/workspaceshard.crd.yaml
-kubectl apply -f "${DEMO_DIR}"/workspace/workspaceshard.yaml
-unset KUBECONFIG
+kubectl config view --kubeconfig "${DEMO_DIR}"/.kcp/admin.kubeconfig --minify --flatten --context=root > "${DEMO_DIR}"/.kcp/root.kubeconfig
+kubectl config view --kubeconfig "${DEMO_DIR}"/.kcp/admin.kubeconfig --minify --flatten --context=root > "${DEMO_DIR}"/.kcp/demo.kubeconfig
 
 echo "KCP server is ready. Press <ctrl>-C to terminate."
 wait

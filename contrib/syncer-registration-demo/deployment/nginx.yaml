@@ -1,19 +1,18 @@
+---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: nginx
-  labels:
-    experimental.workloads.kcp.dev/scheduling-disabled: ""
-
 ---
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-deployment
   namespace: nginx
+  # labels:
+  #   workloads.kcp.dev/cluster: cluster1
 spec:
-  replicas: 3 # tells deployment to run 2 pods matching the template
+  replicas: 1
   selector:
     matchLabels:
       app: nginx
@@ -24,7 +23,8 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: quay.io/bitnami/nginx:1.14.2
+        image: quay.io/skeeey/nginx:1.14.2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
+          protocol: TCP

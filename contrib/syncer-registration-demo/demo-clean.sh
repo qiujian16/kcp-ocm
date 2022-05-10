@@ -17,7 +17,7 @@ kubectl delete managedclustersetbindings --all --all-namespaces
 
 kubectl label managedclusters cluster1 cluster.open-cluster-management.io/clusterset- --overwrite
 kubectl label managedclusters cluster2 cluster.open-cluster-management.io/clusterset- --overwrite
-kubectl delete managedclustersets --all
+kubectl delete managedclustersets dev
 
 kubectl get clustermanagementaddons | grep -v NAME
 if [ "$?" == 0 ]; then
@@ -25,12 +25,12 @@ if [ "$?" == 0 ]; then
 fi
 kubectl delete clustermanagementaddons.addon.open-cluster-management.io --all
 
-kubectl delete namespace kcp-workspace1
+kubectl delete namespace kcp-acm-dev
 
 kubectl config use-context kind-cluster1
-kubectl get ns -l workloads.kcp.dev/cluster=cluster1 | tail -1 |  awk '{print $1}'  | xargs kubectl delete ns
+kubectl get ns -l workloads.kcp.dev/cluster=cluster1 | tail -n +2 |  awk '{print $1}'  | xargs kubectl delete ns
 
 kubectl config use-context kind-cluster2
-kubectl get ns -l workloads.kcp.dev/cluster=cluster2 | tail -1 |  awk '{print $1}'  | xargs kubectl delete ns
+kubectl get ns -l workloads.kcp.dev/cluster=cluster2 | tail -n +2 |  awk '{print $1}'  | xargs kubectl delete ns
 
 kubectl config use-context kind-hub

@@ -49,9 +49,10 @@ fi
 
 # KCP_KUBECONFIG is not defined, wait kcp in the local demo env
 if [ -z "$KCP_KUBECONFIG" ]; then
-    export KCP_KUBECONFIG="${DEMO_DIR}"/.kcp/admin.kubeconfig
+    export KCP_KUBECONFIG="${DEMO_DIR}"/.kcp/root.kubeconfig
     echo "Waiting for KCP server to be started..."
     wait_command "test -f ${DEMO_DIR}/kcp-started"
+
 fi
 
 CTRL_ARGS="--disable-leader-election --namespace=default --kcp-kubeconfig=${KCP_KUBECONFIG} --kubeconfig=${HUB_KUBECONFIG}"
@@ -82,5 +83,5 @@ fi
 
 (cd "${ROOT_DIR}" && exec "${ROOT_DIR}"/kcp-ocm manager ${CTRL_ARGS}) &> kcp-ocm.log &
 KCP_OCM_PID=$!
-echo "KCP and ACM integration controller started: ${KCP_OCM_PID}. Press <ctrl>-C to terminate."
+echo "KCP and OCM integration controller started: ${KCP_OCM_PID}. Press <ctrl>-C to terminate."
 wait

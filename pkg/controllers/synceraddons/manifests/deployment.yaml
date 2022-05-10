@@ -15,15 +15,19 @@ spec:
       labels:
         app: kcp-syncer
     spec:
-      serviceAccountName: kcp-sa
+      serviceAccountName: kcp-syncer
       containers:
-      - name: syncer
+      - name: kcp-syncer
         image: {{ .Image }}
         args:
           - "/syncer"
-          - "--cluster={{ .Cluster }}"
+          - "--workload-cluster-name={{ .Cluster }}"
           - "--from_cluster={{ .LogicalCluster }}"
-          - "--from_kubeconfig=/syncer-kubeconfig/kubeconfig"
+          - "--from_kubeconfig=/kcp-syncer-config/kubeconfig"
+          - "--resources=configmaps"
+          - "--resources=deployments.apps"
+          - "--resources=secrets"
+          - "--resources=serviceaccounts"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -33,19 +37,19 @@ spec:
           runAsNonRoot: true
         volumeMounts:
 {{- if .CertsEnabled }}
-        - name: syncer-clientcert-secret
-          mountPath: "/syncer-certs"
+        - name: kcp-syncer-clientcerts
+          mountPath: "/kcp-syncer-certs"
           readOnly: true
 {{- end }}
-        - name: syncer-kubeconfig
-          mountPath: /syncer-kubeconfig
+        - name: kcp-syncer-config
+          mountPath: /kcp-syncer-config
           readOnly: true
       volumes:
 {{- if .CertsEnabled }}
-      - name: syncer-clientcert-secret
+      - name: kcp-syncer-clientcerts
         secret:
           secretName: {{ .AddonName }}-kcp.dev-syncer-signer-client-cert
 {{- end }}
-      - name: syncer-kubeconfig
+      - name: kcp-syncer-config
         secret:
-          secretName: syncer-kubeconfig
+          secretName: kcp-syncer-config

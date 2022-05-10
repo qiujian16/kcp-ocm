@@ -8,7 +8,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -33,14 +32,13 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/klog/v2"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
 const (
-	defaultSyncerImage = "quay.io/skeeey/kcp-syncer:latest"
+	defaultSyncerImage = "quay.io/skeeey/kcp-syncer:release-0.4"
 
 	clusterJson = `{
 		"apiVersion": "workload.kcp.dev/v1alpha1",
@@ -54,16 +52,15 @@ const (
 	}`
 )
 
-// An addon-framework implementation to deploy syncer and register the syncer to a lcluster on kcp
-// It also needs to setup the rbac on lcluster for the syncer.
+// An addon-framework implementation to deploy syncer and register the syncer to a workspace on kcp
+// It also needs to setup the rbac in the workspace for the syncer.
 
 type syncerAddon struct {
 	addonName string
 
-	kcpRestConfig       *rest.Config
-	kcpServer           string
-	kcpWorkspaceBaseURL string
-	kcpLogicalCluster   string
+	kcpWorkspaceRestConfig *rest.Config
+	kcpServer              string
+	kcpLogicalCluster      string
 
 	certsEnabled bool
 	syncerCA     []byte
@@ -102,8 +99,8 @@ func init() {
 	scheme.AddToScheme(genericScheme)
 }
 
-func NewSyncerAddon(addonName, workspaceBaseURL string, ca, key []byte, kcpRestConfig *rest.Config, recoder events.Recorder) agent.AgentAddon {
-	kcpURL, err := url.Parse(workspaceBaseURL)
+func NewSyncerAddon(addonName string, ca, key []byte, kcpWorkspaceRestConfig *rest.Config, recoder events.Recorder) agent.AgentAddon {
+	kcpURL, err := url.Parse(kcpWorkspaceRestConfig.Host)
 	if err != nil {
 		panic(err)
 	}
@@ -114,15 +111,14 @@ func NewSyncerAddon(addonName, workspaceBaseURL string, ca, key []byte, kcpRestC
 	}
 
 	return &syncerAddon{
-		addonName:           addonName,
-		kcpRestConfig:       kcpRestConfig,
-		kcpWorkspaceBaseURL: workspaceBaseURL,
-		kcpServer:           fmt.Sprintf("%s://%s", kcpURL.Scheme, kcpURL.Host),
-		kcpLogicalCluster:   strings.TrimPrefix(kcpURL.Path, "/clusters/"),
-		certsEnabled:        certsEnabled,
-		syncerCA:            ca,
-		syncerKey:           key,
-		recorder:            recoder,
+		addonName:              addonName,
+		kcpWorkspaceRestConfig: kcpWorkspaceRestConfig,
+		kcpServer:              fmt.Sprintf("%s://%s", kcpURL.Scheme, kcpURL.Host),
+		kcpLogicalCluster:      strings.TrimPrefix(kcpURL.Path, "/clusters/"),
+		certsEnabled:           certsEnabled,
+		syncerCA:               ca,
+		syncerKey:              key,
+		recorder:               recoder,
 	}
 }
 
@@ -136,15 +132,7 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 		objects = append(objects, object)
 	}
 
-	// create the kubeconfig to connect to kcp lcluster
-	// token, err := s.getAddOnSAToken()
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	//TODO: kcp cannot support use a sa to do authorization currently
-	kubeconfig := s.buildKubeconfig(s.kcpRestConfig.BearerToken)
-	kubeConfigData, err := clientcmd.Write(kubeconfig)
+	kubeConfigData, err := s.buildKubeconfig()
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +143,7 @@ func (s *syncerAddon) Manifests(cluster *clusterv1.ManagedCluster, addon *addona
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "syncer-kubeconfig",
+			Name:      "kcp-syncer-config",
 			Namespace: addon.Spec.InstallNamespace,
 		},
 		Data: map[string][]byte{
@@ -187,6 +175,16 @@ func (s *syncerAddon) GetAgentAddonOptions() agent.AgentAddonOptions {
 			PermissionConfig:  s.setupAgentPermissions,
 		},
 	}
+}
+
+func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
+	// apply the workload cluster in the kcp workspace
+	if err := s.applyWorkloadCluster(cluster.Name); err != nil {
+		return err
+	}
+
+	// bind the cluster role in the kcp workspace
+	return s.bindClusterRole(cluster.Name, addon.Name, s.recorder)
 }
 
 func (s *syncerAddon) signerConfiguration(cluster *clusterv1.ManagedCluster) []addonapiv1alpha1.RegistrationConfig {
@@ -221,30 +219,23 @@ func (s *syncerAddon) signer(csr *certificatesv1.CertificateSigningRequest) []by
 	return data
 }
 
-func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
-	return s.applyManifestFromFile(cluster.Name, addon.Name, s.recorder)
-}
-
 func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) (runtime.Object, error) {
-	image := os.Getenv("SYNCER_IMAGE_NAME")
-	if len(image) == 0 {
-		image = defaultSyncerImage
-	}
-
 	manifestConfig := struct {
-		AddonName      string
-		Cluster        string
-		LogicalCluster string
-		Image          string
-		Namespace      string
-		CertsEnabled   bool
+		AddonName           string
+		Cluster             string
+		LogicalCluster      string
+		LogicalClusterLabel string
+		Image               string
+		Namespace           string
+		CertsEnabled        bool
 	}{
-		AddonName:      s.addonName,
-		Cluster:        cluster.Name,
-		LogicalCluster: s.kcpLogicalCluster,
-		Image:          image,
-		Namespace:      addon.Spec.InstallNamespace,
-		CertsEnabled:   s.certsEnabled,
+		AddonName:           s.addonName,
+		Cluster:             cluster.Name,
+		LogicalCluster:      s.kcpLogicalCluster,
+		LogicalClusterLabel: strings.ReplaceAll(s.kcpLogicalCluster, ":", "_"),
+		Image:               defaultSyncerImage,
+		Namespace:           addon.Spec.InstallNamespace,
+		CertsEnabled:        s.certsEnabled,
 	}
 
 	template, err := manifestFiles.ReadFile(file)
@@ -259,35 +250,50 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 	return object, nil
 }
 
-func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recorder events.Recorder) error {
-	// Update config host to workspace and generate kubeclient to apploy kcp clusters
-	workspaceKconfig := rest.CopyConfig(s.kcpRestConfig)
-	workspaceKconfig.Host = s.kcpWorkspaceBaseURL
-	dynamicClient, err := dynamic.NewForConfig(workspaceKconfig)
+func (s *syncerAddon) applyWorkloadCluster(cluster string) error {
+	dynamicClient, err := dynamic.NewForConfig(s.kcpWorkspaceRestConfig)
 	if err != nil {
 		return err
 	}
-	if err := s.applyCluster(dynamicClient, clusterName); err != nil {
+
+	_, err = dynamicClient.Resource(clusterGVR).Get(context.Background(), cluster, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+
+	if !errors.IsNotFound(err) {
 		return err
 	}
 
+	obj := &unstructured.Unstructured{}
+	err = obj.UnmarshalJSON([]byte(clusterJson))
+
+	if err != nil {
+		return err
+	}
+
+	obj.SetName(cluster)
+	_, err = dynamicClient.Resource(clusterGVR).Create(context.Background(), obj, metav1.CreateOptions{})
+	return err
+}
+
+func (s *syncerAddon) bindClusterRole(clusterName, addonName string, recorder events.Recorder) error {
 	// apply clusterrolebindings for addon
-	kconfig := rest.CopyConfig(s.kcpRestConfig)
+	kconfig := rest.CopyConfig(s.kcpWorkspaceRestConfig)
 	kubeclient, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
 		return err
 	}
 
-	workspace := strings.TrimPrefix(addonName, "kcp-syncer-")
 	groups := agent.DefaultGroups(clusterName, addonName)
 	config := struct {
+		AddonName    string
 		Cluster      string
-		Workspace    string
 		Group        string
 		CertsEnabled bool
 	}{
+		AddonName:    addonName,
 		Cluster:      clusterName,
-		Workspace:    workspace,
 		Group:        groups[0],
 		CertsEnabled: s.certsEnabled,
 	}
@@ -314,38 +320,16 @@ func (s *syncerAddon) applyManifestFromFile(clusterName, addonName string, recor
 	return nil
 }
 
-func (s *syncerAddon) applyCluster(dynamicClient dynamic.Interface, cluster string) error {
-	_, err := dynamicClient.Resource(clusterGVR).Get(context.Background(), cluster, metav1.GetOptions{})
-	if err == nil {
-		return nil
-	}
-
-	if !errors.IsNotFound(err) {
-		return err
-	}
-
-	obj := &unstructured.Unstructured{}
-	err = obj.UnmarshalJSON([]byte(clusterJson))
-
-	if err != nil {
-		return err
-	}
-
-	obj.SetName(cluster)
-	_, err = dynamicClient.Resource(clusterGVR).Create(context.Background(), obj, metav1.CreateOptions{})
-	return err
-}
-
-// buildKubeconfig builds a kubeconfig based on a rest config template with a cert/key pair
-func (s *syncerAddon) buildKubeconfig(token string) clientcmdapi.Config {
+// buildKubeconfig builds a kubeconfig based on a rest config template
+func (s *syncerAddon) buildKubeconfig() ([]byte, error) {
 	kubeconfig := clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{"default-cluster": {
 			Server:                s.kcpServer,
 			InsecureSkipTLSVerify: true,
 		}},
-		// TODO use sa token instead of this
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{"default-auth": {
-			Token: token,
+			ClientCertificate: "/kcp-syncer-certs/tls.crt",
+			ClientKey:         "/kcp-syncer-certs/tls.key",
 		}},
 		// Define a context that connects the auth info and cluster, and set it as the default
 		Contexts: map[string]*clientcmdapi.Context{"default-context": {
@@ -356,15 +340,18 @@ func (s *syncerAddon) buildKubeconfig(token string) clientcmdapi.Config {
 		CurrentContext: "default-context",
 	}
 
-	if s.certsEnabled {
+	if !s.certsEnabled {
+		token, err := s.getAddOnSAToken()
+		if err != nil {
+			return nil, err
+		}
 		// Define auth based on the obtained client cert.
 		kubeconfig.AuthInfos = map[string]*clientcmdapi.AuthInfo{"default-auth": {
-			ClientCertificate: "/syncer-certs/tls.crt",
-			ClientKey:         "/syncer-certs/tls.key",
+			Token: token,
 		}}
 	}
 
-	return kubeconfig
+	return clientcmd.Write(kubeconfig)
 }
 
 func signCSR(csr *certificatesv1.CertificateSigningRequest, caCert *x509.Certificate, caKey *rsa.PrivateKey) ([]byte, error) {
@@ -403,24 +390,13 @@ func signCSR(csr *certificatesv1.CertificateSigningRequest, caCert *x509.Certifi
 }
 
 func (s *syncerAddon) getAddOnSAToken() (string, error) {
-	if s.certsEnabled {
-		klog.Infof("client-ca enabled")
-		return "", nil
-	}
-
-	kconfig := rest.CopyConfig(s.kcpRestConfig)
-	kubeclient, err := kubernetes.NewForConfig(kconfig)
+	kubeclient, err := kubernetes.NewForConfig(s.kcpWorkspaceRestConfig)
 	if err != nil {
 		return "", err
 	}
 
-	workspace := strings.TrimPrefix(s.addonName, "kcp-syncer-")
-	workspaceSAName := fmt.Sprintf("%s-sa", workspace)
+	workspaceSAName := fmt.Sprintf("%s-sa", s.addonName)
 	sa, err := kubeclient.CoreV1().ServiceAccounts("kcp-ocm").Get(context.Background(), workspaceSAName, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		klog.Warningf("failed to get worksapce sa %s in namespace kcp-ocm", workspaceSAName)
-		return kconfig.BearerToken, nil
-	}
 	if err != nil {
 		return "", err
 	}
@@ -449,6 +425,5 @@ func (s *syncerAddon) getAddOnSAToken() (string, error) {
 		return string(token), nil
 	}
 
-	klog.Warningf("failed to get the token of worksapce sa %s in namespace kcp-ocm", workspaceSAName)
-	return kconfig.BearerToken, nil
+	return "", fmt.Errorf("failed to get the token of worksapce sa %s in namespace kcp-ocm", workspaceSAName)
 }

@@ -25,8 +25,9 @@ import (
 )
 
 // The controller has the control loop on managedcluster. If a managedcluster is in
-// a managedclusterset with annotation of kcp-lcluster=<name of lcluster>, a managedclusteraddon
-// with the name of "sycner-<lcluster name>" will be created in the cluster namespace
+// a managedclusterset that is bound to a kcp workspace namespace, a managedclusteraddon
+// with the name of "kcp-sycner-<organization workspace name>-<negotiation workspace name>" will
+// be created in the cluster namespace
 
 const clusterSetLabel = "cluster.open-cluster-management.io/clusterset"
 
@@ -101,7 +102,7 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 	}
 
 	clusterName := key
-	klog.V(4).Infof("reconcil cluster %s", clusterName)
+	klog.Infof("Reconcil cluster %s", clusterName)
 
 	cluster, err := c.managedClusterLister.Get(clusterName)
 	switch {
@@ -136,6 +137,7 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 	}
 	for _, clusterSetBinding := range clusterSetBindings {
 		if clusterSetBinding.Name == clusterSetName {
+			//TODO
 			workspaces.Insert(strings.TrimPrefix(clusterSetBinding.Namespace, "kcp-"))
 		}
 	}
@@ -175,7 +177,7 @@ func (c *clusterController) removeAddons(ctx context.Context, clusterName string
 
 func (c *clusterController) applyAddons(ctx context.Context, clusterName string, workspaces sets.String) error {
 	for workspace := range workspaces {
-		_, err := c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).Get(fmt.Sprintf("syncer-%s", workspace))
+		_, err := c.managedClusterAddonLister.ManagedClusterAddOns(clusterName).Get(fmt.Sprintf("kcp-syncer-%s", workspace))
 		switch {
 		case errors.IsNotFound(err):
 			addon := &addonapiv1alpha1.ManagedClusterAddOn{

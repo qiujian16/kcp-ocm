@@ -7,8 +7,8 @@ import (
 
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/addonmanagement"
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/workspace"
+	"github.com/qiujian16/kcp-ocm/pkg/helpers"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
@@ -20,12 +20,6 @@ import (
 	clusterclient "open-cluster-management.io/api/client/cluster/clientset/versioned"
 	clusterinformers "open-cluster-management.io/api/client/cluster/informers/externalversions"
 )
-
-var workspaceGVR = schema.GroupVersionResource{
-	Group:    "tenancy.kcp.dev",
-	Version:  "v1alpha1",
-	Resource: "clusterworkspaces",
-}
 
 // OCMManagerOptions defines the flags for ocm manager
 type OCMManagerOptions struct {
@@ -53,13 +47,6 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 	if err != nil {
 		return err
 	}
-
-	kcpKubeClient, err := kubernetes.NewForConfig(kcpRestConfig)
-	if err != nil {
-		return err
-	}
-
-	//kcpKubeClient.CoreV1().ServiceAccounts("").CreateToken()
 
 	kcpDynamicClient, err := dynamic.NewForConfig(kcpRestConfig)
 	if err != nil {
@@ -124,13 +111,12 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		controllerContext.EventRecorder,
 	)
 
-	workspaceController := workspace.NewWorkspaceController(
+	workspaceController := workspace.NewOrganizationWorkspaceController(
 		kcpCAEnabled,
 		kcpRestConfig,
-		kcpKubeClient,
 		kubeClient,
 		addonClient,
-		kcpDynamicInformer.ForResource(workspaceGVR),
+		kcpDynamicInformer.ForResource(helpers.ClusterWorkspaceGVR),
 		controllerContext.EventRecorder,
 	)
 

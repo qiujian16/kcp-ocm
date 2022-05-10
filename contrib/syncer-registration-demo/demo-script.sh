@@ -8,15 +8,15 @@ source "${DEMO_DIR}"/utils
 
 clear
 
-comment "Create a KCP workspace in the KCP server"
-pe "kubectl apply -f workspace/workspace.yaml --kubeconfig .kcp/admin.kubeconfig"
+export KUBECONFIG=${DEMO_DIR}/.kcp/demo.kubeconfig
+comment "Create an organization workspace in the KCP server"
+pe "kubectl kcp workspace create acm --type Organization"
 
-# comment "As a KCP admin, I assign this workspace to a kcp user"
-# pe "cat ${DEMO_DIR}/workspace/clusterrole.yaml"
-# pe "kubectl apply -f ${DEMO_DIR}/workspace/clusterrole.yaml"
-# pe "cat ${DEMO_DIR}/workspace/clusterrole_binding.yaml"
-# pe "kubectl apply -f ${DEMO_DIR}/workspace/clusterrole_binding.yaml"
-# pe "kubectl get workspaces workspace1 -oyaml"
+comment "Create a negotiation workspace in acm workspace"
+pe "kubectl kcp workspace use acm"
+pe "kubectl kcp workspace create dev"
+# todo tag this workspace
+unset KUBECONFIG
 
 comment "A namespace that corresponds the kcp workspace will be created in the OCM hub"
 pe "kubectl get ns --watch --kubeconfig kubeconfig/hub.kubeconfig"
@@ -24,21 +24,25 @@ pe "kubectl get ns --watch --kubeconfig kubeconfig/hub.kubeconfig"
 comment "There is a clusterset in the OCM hub"
 pe "kubectl get managedclusterset,managedclusters --show-labels --kubeconfig kubeconfig/hub.kubeconfig"
 comment "Bind the clusterset to the workspace namespace in the OCM hub"
-pe "kubectl -n kcp-workspace1 apply -f clusterset/clusterset_binding.yaml --kubeconfig kubeconfig/hub.kubeconfig"
+pe "kubectl -n kcp-acm-dev apply -f clusterset/clusterset_binding.yaml --kubeconfig kubeconfig/hub.kubeconfig"
 
 comment "After the clusterset wat bound, the kcp-syncer will be deployed to all managed clusters in the clusterset"
 comment "kcp-syncer on the managed cluster cluster1"
-pe "kubectl -n kcp-syncer-workspace1 get pods --watch --kubeconfig kubeconfig/cluster1.kubeconfig"
+pe "kubectl -n kcp-syncer-acm-dev get pods --watch --kubeconfig kubeconfig/cluster1.kubeconfig"
 comment "kcp-syncer on the managed cluster cluster2"
-pe "kubectl -n kcp-syncer-workspace1 get pods --watch --kubeconfig kubeconfig/cluster2.kubeconfig"
+pe "kubectl -n kcp-syncer-acm-dev get pods --watch --kubeconfig kubeconfig/cluster2.kubeconfig"
 
-export KUBECONFIG=${DEMO_DIR}/.kcp/admin.kubeconfig
-kubectl config view --minify --flatten | sed 's/root\:default/default\:workspace1/g' > ${DEMO_DIR}/.kcp/workspace.kubeconfig
+export KUBECONFIG=${DEMO_DIR}/.kcp/demo.kubeconfig
+comment 'Sync a deployment from a KCP workspace to a managed cluster'
+pe "kubectl kcp workspace use dev"
+pe "kubectl apply -f deployment/nginx.yaml"
+pe "kubectl -n nginx get deployment --watch"
+pe "kubectl -n nginx get deployment --show-labels"
 unset KUBECONFIG
 
 # starting splitter for test ...
-(cd "${DEMO_DIR}" && exec ${DEMO_DIR}/kcp/bin/deployment-splitter --kubeconfig ${DEMO_DIR}/.kcp/workspace.kubeconfig) &> splitter.log &
+# (cd "${DEMO_DIR}" && exec ${DEMO_DIR}/kcp/bin/deployment-splitter --kubeconfig ${DEMO_DIR}/.kcp/workspace.kubeconfig) &> splitter.log &
 
-comment 'Create a deployment in the KCP workspace'
-pe "kubectl apply -f deployment/nginx.yaml --kubeconfig .kcp/workspace.kubeconfig"
-pe "kubectl -n nginx get deployment --watch --kubeconfig .kcp/workspace.kubeconfig"
+
+# pe "kubectl apply -f deployment/nginx.yaml --kubeconfig .kcp/workspace.kubeconfig"
+# pe "kubectl -n nginx get deployment --watch --kubeconfig .kcp/workspace.kubeconfig"
