@@ -1,29 +1,29 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kcp-acm-integration-controller
+  name: kcp-ocm-integration-controller
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list", "watch"]
 - apiGroups: [""]
   resources: ["namespaces", "secrets"]
-  verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["cluster.open-cluster-management.io"]
-  resources: ["managedclusters", "managedclustersets", "managedclustersetbindings"]
+  resources: ["managedclusters", "managedclustersets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["work.open-cluster-management.io"]
   resources: ["manifestworks"]
-  verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["addon.open-cluster-management.io"]
   resources: ["clustermanagementaddons", "managedclusteraddons"]
-  verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["addon.open-cluster-management.io"]
   resources: ["clustermanagementaddons", "managedclusteraddons/finalizers"]
-  verbs: ["update"]
+  verbs: ["update", "patch"]
 - apiGroups: ["addon.open-cluster-management.io"]
   resources: ["managedclusteraddons/status"]
-  verbs: ["patch", "update"]
+  verbs: ["update", "patch"]
 - apiGroups: ["certificates.k8s.io"]
   resources: ["certificatesigningrequests"]
   verbs: ["get", "list", "watch"]

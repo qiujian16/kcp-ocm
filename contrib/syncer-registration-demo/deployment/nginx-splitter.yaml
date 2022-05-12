@@ -4,9 +4,7 @@ metadata:
   name: nginx
   labels:
     experimental.workloads.kcp.dev/scheduling-disabled: ""
-
 ---
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,7 +22,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: quay.io/bitnami/nginx:1.14.2
+        image: quay.io/skeeey/nginx:1.14.2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80

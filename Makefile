@@ -12,8 +12,8 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 )
 
 # Image URL to use all building/pushing image targets;
-IMAGE ?= kcp-acm-integration-controller
-IMAGE_TAG?=latest
+IMAGE ?= kcp-ocm-integration-controller
+IMAGE_TAG?=kcp-release-0.4
 IMAGE_REGISTRY ?= quay.io/skeeey
 IMAGE_NAME?=$(IMAGE_REGISTRY)/$(IMAGE):$(IMAGE_TAG)
 KUBECTL?=kubectl

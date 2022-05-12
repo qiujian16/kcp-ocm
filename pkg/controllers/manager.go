@@ -6,12 +6,7 @@ import (
 	"time"
 
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/addonmanagement"
-	"github.com/qiujian16/kcp-ocm/pkg/controllers/workspace"
-	"github.com/qiujian16/kcp-ocm/pkg/helpers"
 	"github.com/spf13/pflag"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
@@ -21,39 +16,28 @@ import (
 	clusterinformers "open-cluster-management.io/api/client/cluster/informers/externalversions"
 )
 
-// OCMManagerOptions defines the flags for ocm manager
-type OCMManagerOptions struct {
+// ManagerOptions defines the flags for kcp-ocm integration controller manager
+type ManagerOptions struct {
 	KCPCAFile         string
 	KCPKeyFile        string
 	KCPKubeConfigFile string
 }
 
-// NewWorkloadAgentOptions returns the flags with default value set
-func NewOCMManagerOptions() *OCMManagerOptions {
-	return &OCMManagerOptions{}
+// NewManagerOptions returns the flags with default value set
+func NewManagerOptions() *ManagerOptions {
+	return &ManagerOptions{}
 }
 
 // AddFlags register and binds the default flags
-func (o *OCMManagerOptions) AddFlags(flags *pflag.FlagSet) {
-	// This command only supports reading from config
+func (o *ManagerOptions) AddFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&o.KCPCAFile, "kcp-ca", o.KCPCAFile, "Location of kcp ca file to connect to kcp.")
 	flags.StringVar(&o.KCPKeyFile, "kcp-key", o.KCPKeyFile, "Location of kcp key file to connect to kcp.")
-	flags.StringVar(&o.KCPKubeConfigFile, "kcp-kubeconfig", o.KCPKubeConfigFile, "Location of kcp kubeconfig file to connect to kcp.")
+	flags.StringVar(&o.KCPKubeConfigFile, "kcp-kubeconfig", o.KCPKubeConfigFile, "Location of kcp kubeconfig file to connect to kcp root cluster.")
 }
 
-// RunWorkloadAgent starts the controllers on agent to process work from hub.
-func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
-	kcpRestConfig, err := clientcmd.BuildConfigFromFlags("", o.KCPKubeConfigFile)
-	if err != nil {
-		return err
-	}
-
-	kcpDynamicClient, err := dynamic.NewForConfig(kcpRestConfig)
-	if err != nil {
-		return err
-	}
-
-	kubeClient, err := kubernetes.NewForConfig(controllerContext.KubeConfig)
+// Run starts all of controllers for kcp-ocm integration
+func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
+	kcpRootClusterConfig, err := clientcmd.BuildConfigFromFlags("", o.KCPKubeConfigFile)
 	if err != nil {
 		return err
 	}
@@ -68,13 +52,13 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 		return err
 	}
 
-	kcpCAEnabled := false
+	caEnabled := false
 	if o.KCPCAFile != "" && o.KCPKeyFile != "" {
-		kcpCAEnabled = true
+		caEnabled = true
 	}
 
 	var ca, key []byte
-	if kcpCAEnabled {
+	if caEnabled {
 		ca, err = ioutil.ReadFile(o.KCPCAFile)
 		if err != nil {
 			return err
@@ -88,45 +72,33 @@ func (o *OCMManagerOptions) RunManager(ctx context.Context, controllerContext *c
 
 	addonInformers := addoninformers.NewSharedInformerFactory(addonClient, 10*time.Minute)
 	clusterInformers := clusterinformers.NewSharedInformerFactory(clusterClient, 10*time.Minute)
-	kcpDynamicInformer := dynamicinformer.NewDynamicSharedInformerFactory(kcpDynamicClient, 10*time.Minute)
 
 	clusterController := addonmanagement.NewClusterController(
 		controllerContext.OperatorNamespace,
+		caEnabled,
+		kcpRootClusterConfig,
 		addonClient,
 		clusterInformers.Cluster().V1().ManagedClusters(),
 		clusterInformers.Cluster().V1beta1().ManagedClusterSets(),
-		clusterInformers.Cluster().V1beta1().ManagedClusterSetBindings(),
 		addonInformers.Addon().V1alpha1().ManagedClusterAddOns(),
 		controllerContext.EventRecorder,
 	)
 
 	clusterManagementAddonController := addonmanagement.NewClusterManagementAddonController(
-		kcpDynamicClient,
+		controllerContext.KubeConfig,
+		kcpRootClusterConfig,
 		addonClient,
 		addonInformers.Addon().V1alpha1().ClusterManagementAddOns(),
-		controllerContext.KubeConfig,
-		kcpRestConfig,
 		ca,
 		key,
 		controllerContext.EventRecorder,
 	)
 
-	workspaceController := workspace.NewOrganizationWorkspaceController(
-		kcpCAEnabled,
-		kcpRestConfig,
-		kubeClient,
-		addonClient,
-		kcpDynamicInformer.ForResource(helpers.ClusterWorkspaceGVR),
-		controllerContext.EventRecorder,
-	)
-
 	go addonInformers.Start(ctx.Done())
 	go clusterInformers.Start(ctx.Done())
-	go kcpDynamicInformer.Start(ctx.Done())
 
 	go clusterController.Run(ctx, 1)
 	go clusterManagementAddonController.Run(ctx, 1)
-	go workspaceController.Run(ctx, 1)
 
 	<-ctx.Done()
 	return nil

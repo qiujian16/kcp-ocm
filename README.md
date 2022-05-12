@@ -1,2 +1,2 @@
 # kcp-ocm
-kcp  ocm integration
+kcp ocm integration

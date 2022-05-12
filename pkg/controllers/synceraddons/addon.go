@@ -20,13 +20,10 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -37,20 +34,7 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
 
-const (
-	defaultSyncerImage = "quay.io/skeeey/kcp-syncer:release-0.4"
-
-	clusterJson = `{
-		"apiVersion": "workload.kcp.dev/v1alpha1",
-		"kind": "WorkloadCluster",
-		"metadata": {
-			"name": "guestbook1"
-		},
-		"spec": {
-			"kubeconfig": ""
-		}
-	}`
-)
+const defaultSyncerImage = "quay.io/skeeey/kcp-syncer:release-0.4"
 
 // An addon-framework implementation to deploy syncer and register the syncer to a workspace on kcp
 // It also needs to setup the rbac in the workspace for the syncer.
@@ -178,11 +162,6 @@ func (s *syncerAddon) GetAgentAddonOptions() agent.AgentAddonOptions {
 }
 
 func (s *syncerAddon) setupAgentPermissions(cluster *clusterv1.ManagedCluster, addon *addonapiv1alpha1.ManagedClusterAddOn) error {
-	// apply the workload cluster in the kcp workspace
-	if err := s.applyWorkloadCluster(cluster.Name); err != nil {
-		return err
-	}
-
 	// bind the cluster role in the kcp workspace
 	return s.bindClusterRole(cluster.Name, addon.Name, s.recorder)
 }
@@ -248,33 +227,6 @@ func (s *syncerAddon) loadManifestFromFile(file string, cluster *clusterv1.Manag
 		return nil, err
 	}
 	return object, nil
-}
-
-func (s *syncerAddon) applyWorkloadCluster(cluster string) error {
-	dynamicClient, err := dynamic.NewForConfig(s.kcpWorkspaceRestConfig)
-	if err != nil {
-		return err
-	}
-
-	_, err = dynamicClient.Resource(clusterGVR).Get(context.Background(), cluster, metav1.GetOptions{})
-	if err == nil {
-		return nil
-	}
-
-	if !errors.IsNotFound(err) {
-		return err
-	}
-
-	obj := &unstructured.Unstructured{}
-	err = obj.UnmarshalJSON([]byte(clusterJson))
-
-	if err != nil {
-		return err
-	}
-
-	obj.SetName(cluster)
-	_, err = dynamicClient.Resource(clusterGVR).Create(context.Background(), obj, metav1.CreateOptions{})
-	return err
 }
 
 func (s *syncerAddon) bindClusterRole(clusterName, addonName string, recorder events.Recorder) error {
@@ -396,7 +348,7 @@ func (s *syncerAddon) getAddOnSAToken() (string, error) {
 	}
 
 	workspaceSAName := fmt.Sprintf("%s-sa", s.addonName)
-	sa, err := kubeclient.CoreV1().ServiceAccounts("kcp-ocm").Get(context.Background(), workspaceSAName, metav1.GetOptions{})
+	sa, err := kubeclient.CoreV1().ServiceAccounts("default").Get(context.Background(), workspaceSAName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -405,7 +357,7 @@ func (s *syncerAddon) getAddOnSAToken() (string, error) {
 		if !strings.HasPrefix(secretRef.Name, workspaceSAName) {
 			continue
 		}
-		secret, err := kubeclient.CoreV1().Secrets("kcp-ocm").Get(context.Background(), secretRef.Name, metav1.GetOptions{})
+		secret, err := kubeclient.CoreV1().Secrets("default").Get(context.Background(), secretRef.Name, metav1.GetOptions{})
 		if err != nil {
 			continue
 		}

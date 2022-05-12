@@ -8,14 +8,13 @@ import (
 	"github.com/qiujian16/kcp-ocm/pkg/version"
 )
 
-// NewWorkloadAgent generates a command to start workload agent
+// NewManager generates a command to start kcp-ocm integration controller manager
 func NewManager() *cobra.Command {
-	o := controllers.NewOCMManagerOptions()
-	cmdConfig := controllercmd.
-		NewControllerCommandConfig("kcp-manager", version.Get(), o.RunManager)
+	o := controllers.NewManagerOptions()
+	cmdConfig := controllercmd.NewControllerCommandConfig("kcp-ocm-controller-manager", version.Get(), o.Run)
 	cmd := cmdConfig.NewCommand()
 	cmd.Use = "manager"
-	cmd.Short = "Start the KCP OCM integration manager"
+	cmd.Short = "Start the KCP OCM integration controller manager"
 
 	flags := cmd.Flags()
 	o.AddFlags(flags)

@@ -14,5 +14,5 @@ subjects:
 {{- else }}
 - kind: ServiceAccount
   name: {{ .AddonName }}-sa
-  namespace: kcp-ocm
+  namespace: default
 {{- end }}

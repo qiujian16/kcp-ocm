@@ -1,0 +1,9 @@
+apiVersion: scheduling.kcp.dev/v1alpha1
+kind: Location
+metadata:
+  name: clusters
+spec:
+  resource:
+    group: "workload.kcp.dev"
+    version: "v1alpha1"
+    resource: "workloadclusters"

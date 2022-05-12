@@ -2,17 +2,16 @@ package addonmanagement
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/qiujian16/kcp-ocm/pkg/controllers/synceraddons"
-	"github.com/qiujian16/kcp-ocm/pkg/helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
@@ -22,46 +21,39 @@ import (
 	addonlisterv1alpha1 "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
 )
 
-// This controller has a controller loop that when a clustermanagementaddon with the name is
-// "kcp-sycner-<organization workspace name>-<negotiation workspace name>" is created, the
-// controller maintains an syncer-addon for each negotiation workspace in one organization
-// workspace.
-// This ensure that all syncers for this cluster will be spawned later.
+// This controller has a controller loop on clustermanagementaddon.
+// If a clustermanagementaddon with the name "kcp-sycner-<workspace id>" is created, the
+// controller maintains a kcp-syncer addon manger for each workspace.
 
 const (
 	cmaddonFinalizer = "addon.open-cluster-management.io/cleanup"
 )
 
 type clusterManagementAddonController struct {
-	kcpDynamicClient             dynamic.Interface
-	addonClient                  addonv1alpha1client.Interface
-	clusterManagementAddonLister addonlisterv1alpha1.ClusterManagementAddOnLister
-	sycnerAddonMap               map[string]context.CancelFunc
-	ca                           []byte
-	key                          []byte
 	hubKubconfig                 *rest.Config
 	kcpRootRestConfig            *rest.Config
+	addonClient                  addonv1alpha1client.Interface
+	clusterManagementAddonLister addonlisterv1alpha1.ClusterManagementAddOnLister
+	ca                           []byte
+	key                          []byte
+	sycnerAddonMap               map[string]context.CancelFunc
 	eventRecorder                events.Recorder
 }
 
 func NewClusterManagementAddonController(
-	kcpDynamicClient dynamic.Interface,
+	hubKubconfig, kcpRootRestConfig *rest.Config,
 	addonClient addonv1alpha1client.Interface,
 	clusterManagementAddonInformer addoninformerv1alpha1.ClusterManagementAddOnInformer,
-	hubKubconfig *rest.Config,
-	kcpRootRestConfig *rest.Config,
 	ca, key []byte,
-	recorder events.Recorder,
-) factory.Controller {
+	recorder events.Recorder) factory.Controller {
 	c := &clusterManagementAddonController{
-		kcpDynamicClient:             kcpDynamicClient,
+		hubKubconfig:                 hubKubconfig,
+		kcpRootRestConfig:            kcpRootRestConfig,
 		addonClient:                  addonClient,
 		clusterManagementAddonLister: clusterManagementAddonInformer.Lister(),
-		sycnerAddonMap:               map[string]context.CancelFunc{},
-		hubKubconfig:                 hubKubconfig,
 		ca:                           ca,
 		key:                          key,
-		kcpRootRestConfig:            kcpRootRestConfig,
+		sycnerAddonMap:               map[string]context.CancelFunc{},
 		eventRecorder:                recorder.WithComponentSuffix("syncer-addon-controller"),
 	}
 
@@ -116,12 +108,9 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 		return c.removeFinalizer(ctx, cmaddon)
 	}
 
-	// ensure the mapped workspace exists
-	workspaceRestConfig, err := c.getWorkspaceRestConfig(ctx, cmaddon)
-	if err != nil {
-		return err
-	}
-	if workspaceRestConfig == nil {
+	// get the workspace rest config
+	workspaceConfig := c.getWorkspaceConfig(ctx, cmaddon)
+	if workspaceConfig == nil {
 		return nil
 	}
 
@@ -135,13 +124,18 @@ func (c *clusterManagementAddonController) sync(ctx context.Context, syncCtx fac
 		return err
 	}
 
-	agent := synceraddons.NewSyncerAddon(cmaddonName, c.ca, c.key, workspaceRestConfig, c.eventRecorder)
-	mgr.AddAgent(agent)
+	if err := mgr.AddAgent(synceraddons.NewSyncerAddon(cmaddonName, c.ca, c.key, workspaceConfig, c.eventRecorder)); err != nil {
+		return err
+	}
+
 	addonCtx, cancel := context.WithCancel(ctx)
-	mgr.Start(addonCtx)
+	if err := mgr.Start(addonCtx); err != nil {
+		cancel()
+		return err
+	}
 	c.sycnerAddonMap[cmaddonName] = cancel
 
-	c.eventRecorder.Eventf("AddOnManagerStatred", "Start one addon manager for workspace %s", workspaceRestConfig.Host)
+	c.eventRecorder.Eventf("AddOnManagerStatred", "Start one addon manager for workspace %s", workspaceConfig.Host)
 	return nil
 }
 
@@ -163,40 +157,13 @@ func (c *clusterManagementAddonController) removeFinalizer(ctx context.Context, 
 	return nil
 }
 
-func (c *clusterManagementAddonController) getWorkspaceRestConfig(ctx context.Context, cmaddon *addonapiv1alpha1.ClusterManagementAddOn) (*rest.Config, error) {
-	orgWorkspaceName, ok := cmaddon.Labels["organization-workspace"]
+func (c *clusterManagementAddonController) getWorkspaceConfig(ctx context.Context, cmaddon *addonapiv1alpha1.ClusterManagementAddOn) *rest.Config {
+	workspaceId, ok := cmaddon.Annotations["kcp-workspace"]
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
-	negotiationWorkspaceName, ok := cmaddon.Labels["negotiation-workspace"]
-	if !ok {
-		return nil, nil
-	}
-
-	orgWorkspace, err := c.kcpDynamicClient.Resource(helpers.ClusterWorkspaceGVR).Get(ctx, orgWorkspaceName, metav1.GetOptions{})
-	switch {
-	case errors.IsNotFound(err):
-		return nil, nil
-	case err != nil:
-		return nil, err
-	}
-
-	orgWorkspaceRestConfig := rest.CopyConfig(c.kcpRootRestConfig)
-	orgWorkspaceRestConfig.Host = helpers.GetWorkspaceURL(orgWorkspace)
-	orgWorkspaceDynamicClient, err := dynamic.NewForConfig(orgWorkspaceRestConfig)
-	if err != nil {
-		return nil, err
-	}
-	negotiationWorkspace, err := orgWorkspaceDynamicClient.Resource(helpers.ClusterWorkspaceGVR).Get(ctx, negotiationWorkspaceName, metav1.GetOptions{})
-	switch {
-	case errors.IsNotFound(err):
-		return nil, nil
-	case err != nil:
-		return nil, err
-	}
-
-	negotiationWorkspaceRestConfig := rest.CopyConfig(c.kcpRootRestConfig)
-	negotiationWorkspaceRestConfig.Host = helpers.GetWorkspaceURL(negotiationWorkspace)
-	return negotiationWorkspaceRestConfig, nil
+	workspaceConfig := rest.CopyConfig(c.kcpRootRestConfig)
+	workspaceConfig.Host = fmt.Sprintf("%s:%s", workspaceConfig.Host, workspaceId)
+	return workspaceConfig
 }

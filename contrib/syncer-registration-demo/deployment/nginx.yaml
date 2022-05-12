@@ -9,8 +9,6 @@ kind: Deployment
 metadata:
   name: nginx-deployment
   namespace: nginx
-  # labels:
-  #   workloads.kcp.dev/cluster: cluster1
 spec:
   replicas: 1
   selector:

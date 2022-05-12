@@ -25,8 +25,6 @@ if [ "$?" == 0 ]; then
 fi
 kubectl delete clustermanagementaddons.addon.open-cluster-management.io --all
 
-kubectl delete namespace kcp-acm-dev
-
 kubectl config use-context kind-cluster1
 kubectl get ns -l workloads.kcp.dev/cluster=cluster1 | tail -n +2 |  awk '{print $1}'  | xargs kubectl delete ns
 

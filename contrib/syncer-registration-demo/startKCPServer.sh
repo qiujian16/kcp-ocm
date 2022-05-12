@@ -8,7 +8,7 @@ BUILD_BINARY=${BUILD_BINARY:-"true"}
 ENABLE_CLIENT_CA=${ENABLE_CLIENT_CA:-"false"}
 ENABLE_USER_TOKEN=${ENABLE_USER_TOKEN:-"false"}
 
-KCP_SERVER_ARGS=""
+KCP_SERVER_ARGS="--feature-gates KCPLocationAPI=true"
 
 source "${DEMO_DIR}"/utils
 
